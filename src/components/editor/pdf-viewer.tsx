@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import * as pdfjsLib from 'pdfjs-dist'
 
 // PDF.js worker設定
-pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
+pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js'
 
 export interface MaskSettings {
   bottomHeight: number
@@ -48,9 +48,8 @@ export function PdfViewer({
         setDimensions({ width: viewport.width, height: viewport.height })
 
         await page.render({
-          canvasContext: context,
-          viewport,
           canvas,
+          viewport,
         }).promise
 
         // オーバーレイキャンバスの設定

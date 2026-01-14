@@ -12,7 +12,7 @@ import type { CompanyProfile, Block, TextBlock } from '@/lib/database.types'
 import type { MaskSettings } from './pdf-viewer'
 import type { PageInfo } from './page-list'
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
+pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js'
 
 interface PreviewEditorProps {
   pages: PageInfo[]
@@ -64,9 +64,8 @@ export function PreviewEditor({
         }))
 
         await page.render({
-          canvasContext: context,
-          viewport,
           canvas,
+          viewport,
         }).promise
 
         // 白塗り領域を描画

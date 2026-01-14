@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react'
 import * as pdfjsLib from 'pdfjs-dist'
 import { cn } from '@/lib/utils'
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
+pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js'
 
 export interface PageInfo {
   id: string
@@ -69,9 +69,8 @@ function PageThumbnail({ page, isSelected, onClick }: PageThumbnailProps) {
         canvas.height = viewport.height
 
         await pdfPage.render({
-          canvasContext: context,
-          viewport,
           canvas,
+          viewport,
         }).promise
       } catch (error) {
         console.error('Thumbnail render error:', error)

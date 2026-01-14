@@ -13,7 +13,7 @@ import { toast } from 'sonner'
 import * as pdfjsLib from 'pdfjs-dist'
 import type { CompanyProfile } from '@/lib/database.types'
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
+pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js'
 
 type EditorStep = 'upload' | 'edit' | 'preview'
 
@@ -227,9 +227,9 @@ export default function EditorPage() {
       )}
 
       {step === 'edit' && (
-        <div className="grid grid-cols-12 gap-6">
+        <div className="flex gap-4">
           {/* 左サイドバー: ページリスト */}
-          <div className="col-span-2">
+          <div className="w-48 flex-shrink-0">
             <Card>
               <CardContent className="p-3">
                 <PageList
@@ -266,21 +266,20 @@ export default function EditorPage() {
             </Card>
           </div>
 
-          {/* メインエリア: PDFビューア */}
-          <div className="col-span-7">
+          {/* メインエリア: PDFビューア（大きく中央配置） */}
+          <div className="flex-1 flex justify-center overflow-auto">
             {selectedPage && currentMaskSettings && (
-              <div className="flex flex-col items-center">
-                <PdfViewer
-                  pdfData={selectedPage.pdfData}
-                  pageNumber={selectedPage.pageNumber}
-                  maskSettings={currentMaskSettings}
-                />
-              </div>
+              <PdfViewer
+                pdfData={selectedPage.pdfData}
+                pageNumber={selectedPage.pageNumber}
+                maskSettings={currentMaskSettings}
+                scale={2.0}
+              />
             )}
           </div>
 
           {/* 右サイドバー: コントロール */}
-          <div className="col-span-3 space-y-4">
+          <div className="w-64 flex-shrink-0 space-y-4">
             {currentMaskSettings && (
               <>
                 <MaskControls
