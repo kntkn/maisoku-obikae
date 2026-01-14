@@ -107,14 +107,14 @@ export function PreviewEditor({
         [currentPage.id]: { width: page.width, height: page.height }
       }))
 
-      // 初期ブロックがなければ生成
+      // 初期ブロックがなければ生成（スケールを適用した値で計算）
       setBlocks((prev) => {
         if (prev[currentPage.id]) return prev
         const initialBlocks = createInitialBlocks(
           page.width,
           page.height,
-          currentMask.bottomHeight,
-          currentMask.leftWidth,
+          currentMask.bottomHeight * scale,
+          currentMask.leftWidth * scale,
           currentMask.enableLShape
         )
         return { ...prev, [currentPage.id]: initialBlocks }
@@ -262,12 +262,12 @@ export function PreviewEditor({
         const dims = pageDimensions[page.id] || { width: width, height: height }
         const scaleRatio = width / dims.width
 
-        // 白塗り（下部）
+        // 白塗り（下部）- maskSettingsは元のPDF座標で保存されているため直接使用
         pdfPage.drawRectangle({
           x: 0,
           y: 0,
           width: width,
-          height: mask.bottomHeight * scaleRatio,
+          height: mask.bottomHeight,
           color: rgb(1, 1, 1),
         })
 
@@ -275,9 +275,9 @@ export function PreviewEditor({
         if (mask.enableLShape && mask.leftWidth > 0) {
           pdfPage.drawRectangle({
             x: 0,
-            y: mask.bottomHeight * scaleRatio,
-            width: mask.leftWidth * scaleRatio,
-            height: height - mask.bottomHeight * scaleRatio,
+            y: mask.bottomHeight,
+            width: mask.leftWidth,
+            height: height - mask.bottomHeight,
             color: rgb(1, 1, 1),
           })
         }
@@ -404,7 +404,7 @@ export function PreviewEditor({
                     className="absolute left-0 right-0 bg-white"
                     style={{
                       bottom: 0,
-                      height: currentMask.bottomHeight,
+                      height: currentMask.bottomHeight * scale,
                     }}
                   />
                 )}
@@ -413,8 +413,8 @@ export function PreviewEditor({
                   <div
                     className="absolute top-0 left-0 bg-white"
                     style={{
-                      width: currentMask.leftWidth,
-                      height: dimensions.height - currentMask.bottomHeight,
+                      width: currentMask.leftWidth * scale,
+                      height: dimensions.height - currentMask.bottomHeight * scale,
                     }}
                   />
                 )}
@@ -425,8 +425,8 @@ export function PreviewEditor({
               <BlockEditor
                 canvasWidth={dimensions.width}
                 canvasHeight={dimensions.height}
-                maskBottomHeight={currentMask.bottomHeight}
-                maskLeftWidth={currentMask.leftWidth}
+                maskBottomHeight={currentMask.bottomHeight * scale}
+                maskLeftWidth={currentMask.leftWidth * scale}
                 enableLShape={currentMask.enableLShape}
                 companyProfile={companyProfile}
                 blocks={currentBlocks}
