@@ -1,7 +1,9 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
-import { loadPdf, renderPdfPage } from '@/lib/pdf'
+import { Document, Page } from 'react-pdf'
+import 'react-pdf/dist/Page/AnnotationLayer.css'
+import 'react-pdf/dist/Page/TextLayer.css'
+import '@/lib/pdf' // worker設定を読み込み
 import { cn } from '@/lib/utils'
 
 export interface PageInfo {
@@ -48,23 +50,6 @@ interface PageThumbnailProps {
 }
 
 function PageThumbnail({ page, isSelected, onClick }: PageThumbnailProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-
-  useEffect(() => {
-    const renderThumbnail = async () => {
-      if (!canvasRef.current) return
-
-      try {
-        const pdf = await loadPdf(page.pdfData)
-        await renderPdfPage(pdf, page.pageNumber, canvasRef.current, 0.2)
-      } catch (error) {
-        console.error('Thumbnail render error:', error)
-      }
-    }
-
-    renderThumbnail()
-  }, [page.pdfData, page.pageNumber])
-
   const statusColors = {
     pending: 'bg-gray-100',
     editing: 'bg-yellow-100',
@@ -86,11 +71,16 @@ function PageThumbnail({ page, isSelected, onClick }: PageThumbnailProps) {
       )}
     >
       <div className="flex gap-2">
-        <canvas
-          ref={canvasRef}
-          className="border rounded bg-white"
-          style={{ width: 60, height: 'auto' }}
-        />
+        <div className="w-16 flex-shrink-0 border rounded bg-white overflow-hidden">
+          <Document file={page.pdfData} loading={null} error={null}>
+            <Page
+              pageNumber={page.pageNumber}
+              width={60}
+              renderTextLayer={false}
+              renderAnnotationLayer={false}
+            />
+          </Document>
+        </div>
         <div className="flex-1 min-w-0">
           <p className="text-xs font-medium truncate">{page.fileName}</p>
           <p className="text-xs text-gray-500">ページ {page.pageNumber}</p>

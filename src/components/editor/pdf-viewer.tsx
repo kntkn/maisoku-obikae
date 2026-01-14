@@ -1,7 +1,10 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { loadPdf, renderPdfPage } from '@/lib/pdf'
+import { useState, useCallback } from 'react'
+import { Document, Page } from 'react-pdf'
+import 'react-pdf/dist/Page/AnnotationLayer.css'
+import 'react-pdf/dist/Page/TextLayer.css'
+import '@/lib/pdf' // worker設定を読み込み
 
 export interface MaskSettings {
   bottomHeight: number
@@ -22,73 +25,60 @@ export function PdfViewer({
   maskSettings,
   scale = 1.5,
 }: PdfViewerProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const overlayCanvasRef = useRef<HTMLCanvasElement>(null)
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
 
-  useEffect(() => {
-    const renderPdf = async () => {
-      if (!canvasRef.current || !overlayCanvasRef.current) return
-
-      try {
-        const pdf = await loadPdf(pdfData)
-        const dims = await renderPdfPage(pdf, pageNumber, canvasRef.current, scale)
-        setDimensions(dims)
-
-        // オーバーレイキャンバスの設定
-        const overlayCanvas = overlayCanvasRef.current
-        overlayCanvas.width = dims.width
-        overlayCanvas.height = dims.height
-      } catch (error) {
-        console.error('PDF render error:', error)
-      }
-    }
-
-    renderPdf()
-  }, [pdfData, pageNumber, scale])
-
-  // マスク領域の描画
-  useEffect(() => {
-    if (!overlayCanvasRef.current || dimensions.width === 0) return
-
-    const canvas = overlayCanvasRef.current
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    // クリア
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-    // 赤オーバーレイ（半透明）
-    ctx.fillStyle = 'rgba(239, 68, 68, 0.4)'
-
-    // 下部のマスク
-    if (maskSettings.bottomHeight > 0) {
-      ctx.fillRect(
-        0,
-        canvas.height - maskSettings.bottomHeight,
-        canvas.width,
-        maskSettings.bottomHeight
-      )
-    }
-
-    // L字の場合、左側のマスク
-    if (maskSettings.enableLShape && maskSettings.leftWidth > 0) {
-      ctx.fillRect(
-        0,
-        0,
-        maskSettings.leftWidth,
-        canvas.height - maskSettings.bottomHeight
-      )
-    }
-  }, [maskSettings, dimensions])
+  const onPageLoadSuccess = useCallback(
+    (page: { width: number; height: number }) => {
+      setDimensions({ width: page.width * scale, height: page.height * scale })
+    },
+    [scale]
+  )
 
   return (
     <div className="relative inline-block border rounded-lg overflow-hidden shadow-lg">
-      <canvas ref={canvasRef} className="block" />
-      <canvas
-        ref={overlayCanvasRef}
-        className="absolute top-0 left-0 pointer-events-none"
-      />
+      <Document
+        file={pdfData}
+        loading={<div className="p-8 text-gray-500">PDFを読み込み中...</div>}
+        error={<div className="p-8 text-red-500">PDFの読み込みに失敗しました</div>}
+      >
+        <Page
+          pageNumber={pageNumber}
+          scale={scale}
+          onLoadSuccess={onPageLoadSuccess}
+          renderTextLayer={false}
+          renderAnnotationLayer={false}
+        />
+      </Document>
+
+      {/* オーバーレイ（赤い半透明マスク） */}
+      {dimensions.width > 0 && (
+        <div
+          className="absolute top-0 left-0 pointer-events-none"
+          style={{ width: dimensions.width, height: dimensions.height }}
+        >
+          {/* 下部のマスク */}
+          {maskSettings.bottomHeight > 0 && (
+            <div
+              className="absolute left-0 right-0 bg-red-500/40"
+              style={{
+                bottom: 0,
+                height: maskSettings.bottomHeight,
+              }}
+            />
+          )}
+
+          {/* L字の左側マスク */}
+          {maskSettings.enableLShape && maskSettings.leftWidth > 0 && (
+            <div
+              className="absolute top-0 left-0 bg-red-500/40"
+              style={{
+                width: maskSettings.leftWidth,
+                height: dimensions.height - maskSettings.bottomHeight,
+              }}
+            />
+          )}
+        </div>
+      )}
     </div>
   )
 }

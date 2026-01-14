@@ -1,7 +1,10 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback } from 'react'
-import { loadPdf, renderPdfPage } from '@/lib/pdf'
+import { useEffect, useState, useCallback } from 'react'
+import { Document, Page, pdfjs } from 'react-pdf'
+import 'react-pdf/dist/Page/AnnotationLayer.css'
+import 'react-pdf/dist/Page/TextLayer.css'
+import '@/lib/pdf' // worker設定を読み込み
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
 import { BlockEditor, createInitialBlocks } from './block-editor'
 import { BlockProperties } from './block-properties'
@@ -25,7 +28,6 @@ export function PreviewEditor({
   companyProfile,
   onBack,
 }: PreviewEditorProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
   const [currentPageIndex, setCurrentPageIndex] = useState(0)
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
   const [pageDimensions, setPageDimensions] = useState<{ [pageId: string]: { width: number; height: number } }>({})
@@ -38,59 +40,33 @@ export function PreviewEditor({
   const currentMask = currentPage ? maskSettings[currentPage.id] : null
   const currentBlocks = currentPage ? blocks[currentPage.id] || [] : []
 
-  // PDF描画
-  useEffect(() => {
-    const renderPdf = async () => {
-      if (!canvasRef.current || !currentPage) return
+  const onPageLoadSuccess = useCallback(
+    (page: { width: number; height: number }) => {
+      if (!currentPage || !currentMask) return
 
-      try {
-        const pdf = await loadPdf(currentPage.pdfData)
-        const dims = await renderPdfPage(pdf, currentPage.pageNumber, canvasRef.current, scale)
+      const scaledWidth = page.width * scale
+      const scaledHeight = page.height * scale
 
-        setDimensions(dims)
-        setPageDimensions((prev) => ({
-          ...prev,
-          [currentPage.id]: dims
-        }))
+      setDimensions({ width: scaledWidth, height: scaledHeight })
+      setPageDimensions((prev) => ({
+        ...prev,
+        [currentPage.id]: { width: scaledWidth, height: scaledHeight }
+      }))
 
-        // 白塗り領域を描画
-        if (currentMask) {
-          const canvas = canvasRef.current
-          const context = canvas.getContext('2d')
-          if (context) {
-            context.fillStyle = 'white'
-            // 下部
-            context.fillRect(
-              0,
-              canvas.height - currentMask.bottomHeight,
-              canvas.width,
-              currentMask.bottomHeight
-            )
-            // L字の左側
-            if (currentMask.enableLShape && currentMask.leftWidth > 0) {
-              context.fillRect(0, 0, currentMask.leftWidth, canvas.height - currentMask.bottomHeight)
-            }
-          }
-        }
-
-        // 初期ブロックがなければ生成
-        if (!blocks[currentPage.id] && currentMask) {
-          const initialBlocks = createInitialBlocks(
-            dims.width,
-            dims.height,
-            currentMask.bottomHeight,
-            currentMask.leftWidth,
-            currentMask.enableLShape
-          )
-          setBlocks((prev) => ({ ...prev, [currentPage.id]: initialBlocks }))
-        }
-      } catch (error) {
-        console.error('PDF render error:', error)
+      // 初期ブロックがなければ生成
+      if (!blocks[currentPage.id]) {
+        const initialBlocks = createInitialBlocks(
+          scaledWidth,
+          scaledHeight,
+          currentMask.bottomHeight,
+          currentMask.leftWidth,
+          currentMask.enableLShape
+        )
+        setBlocks((prev) => ({ ...prev, [currentPage.id]: initialBlocks }))
       }
-    }
-
-    renderPdf()
-  }, [currentPage, currentMask, scale])
+    },
+    [currentPage, currentMask, scale, blocks]
+  )
 
   const handleBlocksChange = useCallback(
     (newBlocks: Block[]) => {
@@ -157,10 +133,8 @@ export function PreviewEditor({
           const { width, height } = pdfPage.getSize()
 
           // ページごとの寸法を使用してスケール補正
-          const dims = pageDimensions[page.id] || { width: width / scale, height: height / scale }
-          const canvasWidth = dims.width
-          const canvasHeight = dims.height
-          const scaleRatio = width / canvasWidth
+          const dims = pageDimensions[page.id] || { width: width, height: height }
+          const scaleRatio = width / dims.width
 
           // 白塗り
           pdfPage.drawRectangle({
@@ -204,7 +178,7 @@ export function PreviewEditor({
             }
 
             // PDF座標系は下からなので変換
-            const y = (canvasHeight - textBlock.y - textBlock.height) * scaleRatio
+            const y = height - (textBlock.y + textBlock.height) * scaleRatio
 
             pdfPage.drawText(content, {
               x,
@@ -291,7 +265,53 @@ export function PreviewEditor({
         {/* PDFビューア + ブロックエディタ */}
         <div className="col-span-9">
           <div className="relative inline-block border rounded-lg overflow-hidden shadow-lg">
-            <canvas ref={canvasRef} className="block" />
+            {currentPage && (
+              <Document
+                file={currentPage.pdfData}
+                loading={<div className="p-8 text-gray-500">PDFを読み込み中...</div>}
+                error={<div className="p-8 text-red-500">PDFの読み込みに失敗しました</div>}
+              >
+                <Page
+                  pageNumber={currentPage.pageNumber}
+                  scale={scale}
+                  onLoadSuccess={onPageLoadSuccess}
+                  renderTextLayer={false}
+                  renderAnnotationLayer={false}
+                />
+              </Document>
+            )}
+
+            {/* 白塗りオーバーレイ */}
+            {dimensions.width > 0 && currentMask && (
+              <div
+                className="absolute top-0 left-0 pointer-events-none"
+                style={{ width: dimensions.width, height: dimensions.height }}
+              >
+                {/* 下部の白塗り */}
+                {currentMask.bottomHeight > 0 && (
+                  <div
+                    className="absolute left-0 right-0 bg-white"
+                    style={{
+                      bottom: 0,
+                      height: currentMask.bottomHeight,
+                    }}
+                  />
+                )}
+
+                {/* L字の左側白塗り */}
+                {currentMask.enableLShape && currentMask.leftWidth > 0 && (
+                  <div
+                    className="absolute top-0 left-0 bg-white"
+                    style={{
+                      width: currentMask.leftWidth,
+                      height: dimensions.height - currentMask.bottomHeight,
+                    }}
+                  />
+                )}
+              </div>
+            )}
+
+            {/* ブロックエディタ */}
             {dimensions.width > 0 && currentMask && (
               <BlockEditor
                 canvasWidth={dimensions.width}

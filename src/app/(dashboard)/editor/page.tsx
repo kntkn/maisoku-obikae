@@ -2,7 +2,8 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { loadPdf } from '@/lib/pdf'
+import { pdfjs } from 'react-pdf'
+import '@/lib/pdf' // worker設定を読み込み
 import { PdfUploader } from '@/components/editor/pdf-uploader'
 import { PdfViewer, type MaskSettings } from '@/components/editor/pdf-viewer'
 import { MaskControls } from '@/components/editor/mask-controls'
@@ -70,7 +71,8 @@ export default function EditorPage() {
       const fileId = `file-${Date.now()}-${fileIndex}`
 
       try {
-        const pdf = await loadPdf(arrayBuffer)
+        // react-pdfのpdfjsを使ってPDFを読み込み
+        const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise
         const numPages = pdf.numPages
 
         for (let pageNum = 1; pageNum <= numPages; pageNum++) {
