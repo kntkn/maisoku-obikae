@@ -3,6 +3,10 @@
 import { useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import { cn } from '@/lib/utils'
+import type { PageInfo } from '@/types/editor'
+
+// 型をre-export（他のファイルとの互換性のため）
+export type { PageInfo } from '@/types/editor'
 
 // react-pdfをクライアントサイドのみでロード
 const Document = dynamic(
@@ -14,17 +18,6 @@ const Page = dynamic(
   () => import('react-pdf').then((mod) => mod.Page),
   { ssr: false }
 )
-
-export interface PageInfo {
-  id: string
-  fileId: string
-  fileIndex: number
-  pageNumber: number
-  fileName: string
-  pdfData: ArrayBuffer
-  status: 'pending' | 'editing' | 'done'
-  canvasDimensions?: { width: number; height: number }
-}
 
 interface PageListProps {
   pages: PageInfo[]

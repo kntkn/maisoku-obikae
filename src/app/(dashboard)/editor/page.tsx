@@ -1,22 +1,33 @@
 'use client'
 
 import { useState, useCallback, useEffect, useRef } from 'react'
+import dynamic from 'next/dynamic'
 import { createClient } from '@/lib/supabase/client'
 import { PdfUploader } from '@/components/editor/pdf-uploader'
-import { PdfViewer, type MaskSettings } from '@/components/editor/pdf-viewer'
 import { MaskControls } from '@/components/editor/mask-controls'
-import { PageList, type PageInfo } from '@/components/editor/page-list'
-import { PreviewEditor } from '@/components/editor/preview-editor'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { toast } from 'sonner'
 import type { CompanyProfile } from '@/lib/database.types'
+import type { MaskSettings, PageInfo, PageMaskSettings } from '@/types/editor'
+
+// react-pdfを使うコンポーネントはサーバーで評価されないようdynamic importにする
+const PdfViewer = dynamic(
+  () => import('@/components/editor/pdf-viewer').then(mod => mod.PdfViewer),
+  { ssr: false, loading: () => <div className="p-8 text-gray-500">PDFビューア読み込み中...</div> }
+)
+
+const PageList = dynamic(
+  () => import('@/components/editor/page-list').then(mod => mod.PageList),
+  { ssr: false, loading: () => <div className="p-4 text-gray-500">...</div> }
+)
+
+const PreviewEditor = dynamic(
+  () => import('@/components/editor/preview-editor').then(mod => mod.PreviewEditor),
+  { ssr: false, loading: () => <div className="p-8 text-gray-500">プレビュー読み込み中...</div> }
+)
 
 type EditorStep = 'upload' | 'edit' | 'preview'
-
-interface PageMaskSettings {
-  [pageId: string]: MaskSettings
-}
 
 export default function EditorPage() {
   const [step, setStep] = useState<EditorStep>('upload')

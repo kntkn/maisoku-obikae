@@ -2,6 +2,10 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import dynamic from 'next/dynamic'
+import type { MaskSettings } from '@/types/editor'
+
+// 型をre-export（他のファイルとの互換性のため）
+export type { MaskSettings } from '@/types/editor'
 
 // react-pdfをクライアントサイドのみでロード
 const Document = dynamic(
@@ -13,12 +17,6 @@ const Page = dynamic(
   () => import('react-pdf').then((mod) => mod.Page),
   { ssr: false }
 )
-
-export interface MaskSettings {
-  bottomHeight: number
-  leftWidth: number
-  enableLShape: boolean
-}
 
 interface PdfViewerProps {
   pdfData: ArrayBuffer

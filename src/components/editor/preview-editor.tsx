@@ -9,8 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { toast } from 'sonner'
 import type { CompanyProfile, Block, TextBlock } from '@/lib/database.types'
-import type { MaskSettings } from './pdf-viewer'
-import type { PageInfo } from './page-list'
+import type { MaskSettings, PageInfo } from '@/types/editor'
 
 // react-pdfをクライアントサイドのみでロード
 const Document = dynamic(
