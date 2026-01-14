@@ -29,6 +29,11 @@ const PreviewEditor = dynamic(
 
 type EditorStep = 'upload' | 'edit' | 'preview'
 
+// pdfjs の型定義（any で簡略化してSSR問題を回避）
+type PdfjsType = {
+  getDocument: (src: { data: ArrayBuffer }) => { promise: Promise<{ numPages: number }> }
+}
+
 export default function EditorPage() {
   const [step, setStep] = useState<EditorStep>('upload')
   const [pages, setPages] = useState<PageInfo[]>([])
@@ -36,16 +41,23 @@ export default function EditorPage() {
   const [maskSettings, setMaskSettings] = useState<PageMaskSettings>({})
   const [companyProfile, setCompanyProfile] = useState<CompanyProfile | null>(null)
   const [loadingProfile, setLoadingProfile] = useState(true)
-  const pdfjsRef = useRef<typeof import('react-pdf').pdfjs | null>(null)
+  const [pdfjsReady, setPdfjsReady] = useState(false)
+  const pdfjsRef = useRef<PdfjsType | null>(null)
 
   const supabase = createClient()
 
-  // pdfjs を動的にロード
+  // pdfjs を動的にロード（クライアントサイドのみ）
   useEffect(() => {
+    let mounted = true
     import('react-pdf').then((mod) => {
+      if (!mounted) return
       mod.pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${mod.pdfjs.version}/build/pdf.worker.min.mjs`
-      pdfjsRef.current = mod.pdfjs
+      pdfjsRef.current = mod.pdfjs as unknown as PdfjsType
+      setPdfjsReady(true)
+    }).catch(err => {
+      console.error('Failed to load pdfjs:', err)
     })
+    return () => { mounted = false }
   }, [])
 
   // 会社情報を取得
@@ -80,7 +92,7 @@ export default function EditorPage() {
   }, [])
 
   const handleFilesSelected = useCallback(async (files: File[]) => {
-    if (!pdfjsRef.current) {
+    if (!pdfjsReady || !pdfjsRef.current) {
       toast.error('PDFライブラリの読み込み中です。しばらくお待ちください。')
       return
     }
