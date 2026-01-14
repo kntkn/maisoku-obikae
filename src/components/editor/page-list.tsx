@@ -8,11 +8,13 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.j
 
 export interface PageInfo {
   id: string
+  fileId: string // ファイル単位のID（グループ化用）
   fileIndex: number
   pageNumber: number
   fileName: string
   pdfData: ArrayBuffer
   status: 'pending' | 'editing' | 'done'
+  canvasDimensions?: { width: number; height: number } // ページごとの寸法
 }
 
 interface PageListProps {

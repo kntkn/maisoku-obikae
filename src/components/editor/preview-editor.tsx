@@ -30,6 +30,7 @@ export function PreviewEditor({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [currentPageIndex, setCurrentPageIndex] = useState(0)
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
+  const [pageDimensions, setPageDimensions] = useState<{ [pageId: string]: { width: number; height: number } }>({})
   const [blocks, setBlocks] = useState<{ [pageId: string]: Block[] }>({})
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
@@ -56,6 +57,11 @@ export function PreviewEditor({
         canvas.width = viewport.width
         canvas.height = viewport.height
         setDimensions({ width: viewport.width, height: viewport.height })
+        // ページごとの寸法を保存
+        setPageDimensions((prev) => ({
+          ...prev,
+          [currentPage.id]: { width: viewport.width, height: viewport.height }
+        }))
 
         await page.render({
           canvasContext: context,
@@ -137,15 +143,14 @@ export function PreviewEditor({
   const handleExport = async () => {
     setExporting(true)
     try {
-      // 処理するページをグループ化（同じPDFファイル）
+      // 処理するページをグループ化（fileIdで同じPDFファイルをまとめる）
       const pdfGroups = new Map<string, { pages: PageInfo[]; pdfData: ArrayBuffer }>()
 
       for (const page of pages) {
-        const key = `${page.fileName}-${page.fileIndex}`
-        if (!pdfGroups.has(key)) {
-          pdfGroups.set(key, { pages: [], pdfData: page.pdfData })
+        if (!pdfGroups.has(page.fileId)) {
+          pdfGroups.set(page.fileId, { pages: [], pdfData: page.pdfData })
         }
-        pdfGroups.get(key)!.pages.push(page)
+        pdfGroups.get(page.fileId)!.pages.push(page)
       }
 
       const outputPdfs: { name: string; data: Uint8Array }[] = []
@@ -163,8 +168,11 @@ export function PreviewEditor({
           const pdfPage = pdfDoc.getPage(page.pageNumber - 1)
           const { width, height } = pdfPage.getSize()
 
-          // スケール補正（Canvas表示とPDF座標の変換）
-          const scaleRatio = width / (dimensions.width || width)
+          // ページごとの寸法を使用してスケール補正
+          const dims = pageDimensions[page.id] || { width: width / scale, height: height / scale }
+          const canvasWidth = dims.width
+          const canvasHeight = dims.height
+          const scaleRatio = width / canvasWidth
 
           // 白塗り
           pdfPage.drawRectangle({
@@ -195,9 +203,20 @@ export function PreviewEditor({
 
             const font = textBlock.fontWeight === 'bold' ? helveticaBold : helveticaFont
             const fontSize = textBlock.fontSize * scaleRatio
-            const x = textBlock.x * scaleRatio
+
+            // テキスト幅を計算してtextAlignを適用
+            const textWidth = font.widthOfTextAtSize(content, fontSize)
+            const blockWidthPdf = textBlock.width * scaleRatio
+            let x = textBlock.x * scaleRatio
+
+            if (textBlock.textAlign === 'center') {
+              x += (blockWidthPdf - textWidth) / 2
+            } else if (textBlock.textAlign === 'right') {
+              x += blockWidthPdf - textWidth
+            }
+
             // PDF座標系は下からなので変換
-            const y = (dimensions.height - textBlock.y - textBlock.height) * scaleRatio
+            const y = (canvasHeight - textBlock.y - textBlock.height) * scaleRatio
 
             pdfPage.drawText(content, {
               x,

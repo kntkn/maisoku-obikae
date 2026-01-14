@@ -64,21 +64,23 @@ export default function EditorPage() {
 
   const handleFilesSelected = useCallback(async (files: File[]) => {
     const newPages: PageInfo[] = []
-    let pageIndex = pages.length
+    const existingFileCount = new Set(pages.map(p => p.fileId)).size
 
     for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
       const file = files[fileIndex]
       const arrayBuffer = await file.arrayBuffer()
+      const fileId = `file-${Date.now()}-${fileIndex}` // ファイル単位のID
 
       try {
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
         const numPages = pdf.numPages
 
         for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-          const pageId = `${Date.now()}-${fileIndex}-${pageNum}`
+          const pageId = `${fileId}-page-${pageNum}`
           newPages.push({
             id: pageId,
-            fileIndex: pageIndex++,
+            fileId, // 同じファイルのページは同じfileIdを共有
+            fileIndex: existingFileCount + fileIndex, // ファイル単位のインデックス
             pageNumber: pageNum,
             fileName: file.name,
             pdfData: arrayBuffer,
@@ -144,11 +146,17 @@ export default function EditorPage() {
   const handleSelectPage = useCallback((id: string) => {
     setSelectedPageId(id)
     setPages((prev) =>
-      prev.map((page) =>
-        page.id === id && page.status === 'pending'
-          ? { ...page, status: 'editing' }
-          : page
-      )
+      prev.map((page) => {
+        // 選択されたページがpendingならeditingに
+        if (page.id === id && page.status === 'pending') {
+          return { ...page, status: 'editing' }
+        }
+        // 前にeditingだったページをpendingに戻す（doneは除く）
+        if (page.id !== id && page.status === 'editing') {
+          return { ...page, status: 'pending' }
+        }
+        return page
+      })
     )
   }, [])
 
