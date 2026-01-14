@@ -13,7 +13,7 @@ export interface PageInfo {
   fileIndex: number
   pageNumber: number
   fileName: string
-  pdfData: ArrayBuffer
+  pdfData: Uint8Array  // ArrayBufferではなくUint8Arrayを使用（detached対策）
   status: 'pending' | 'editing' | 'done'
   canvasDimensions?: { width: number; height: number }
 }

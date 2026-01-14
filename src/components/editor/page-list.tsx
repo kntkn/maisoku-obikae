@@ -85,7 +85,7 @@ function PageThumbnail({ page, isSelected, onClick }: PageThumbnailProps) {
       <div className="flex gap-2">
         <div className="w-16 h-20 flex-shrink-0 border rounded bg-white overflow-hidden flex items-center justify-center">
           {isReady ? (
-            <Document file={page.pdfData} loading={null} error={null}>
+            <Document file={{ data: page.pdfData.slice() }} loading={null} error={null}>
               <Page
                 pageNumber={page.pageNumber}
                 width={60}

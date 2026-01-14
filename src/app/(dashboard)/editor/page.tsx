@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, useLayoutEffect } from 'react'
 import dynamic from 'next/dynamic'
 import { createClient } from '@/lib/supabase/client'
 import { PdfUploader } from '@/components/editor/pdf-uploader'
@@ -31,7 +31,7 @@ type EditorStep = 'upload' | 'edit' | 'preview'
 
 // pdfjs の型定義（any で簡略化してSSR問題を回避）
 type PdfjsType = {
-  getDocument: (src: { data: ArrayBuffer }) => { promise: Promise<{ numPages: number }> }
+  getDocument: (src: { data: Uint8Array }) => { promise: Promise<{ numPages: number }> }
 }
 
 export default function EditorPage() {
@@ -43,21 +43,41 @@ export default function EditorPage() {
   const [loadingProfile, setLoadingProfile] = useState(true)
   const [pdfjsReady, setPdfjsReady] = useState(false)
   const pdfjsRef = useRef<PdfjsType | null>(null)
+  const pdfContainerRef = useRef<HTMLDivElement>(null)
+  const [pdfMaxWidth, setPdfMaxWidth] = useState<number>(0)
 
   const supabase = createClient()
+
+  // PDFコンテナの幅を監視
+  useEffect(() => {
+    const updateWidth = () => {
+      if (pdfContainerRef.current) {
+        const width = pdfContainerRef.current.clientWidth - 32 // padding分を引く
+        setPdfMaxWidth(width > 0 ? width : 0)
+      }
+    }
+
+    updateWidth()
+    window.addEventListener('resize', updateWidth)
+    return () => window.removeEventListener('resize', updateWidth)
+  }, [step])
 
   // pdfjs を動的にロード（クライアントサイドのみ）
   useEffect(() => {
     let mounted = true
+    console.log('[pdfjs] Starting to load react-pdf...')
     import('react-pdf').then((mod) => {
+      console.log('[pdfjs] react-pdf loaded, mounted:', mounted)
       if (!mounted) return
       // CDNからworkerをロード（バージョンは動的に取得）
       const version = mod.pdfjs.version
+      console.log('[pdfjs] version:', version)
       mod.pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${version}/build/pdf.worker.min.mjs`
       pdfjsRef.current = mod.pdfjs as unknown as PdfjsType
       setPdfjsReady(true)
+      console.log('[pdfjs] Ready!')
     }).catch(err => {
-      console.error('Failed to load pdfjs:', err)
+      console.error('[pdfjs] Failed to load:', err)
     })
     return () => { mounted = false }
   }, [])
@@ -105,10 +125,11 @@ export default function EditorPage() {
     for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
       const file = files[fileIndex]
       const arrayBuffer = await file.arrayBuffer()
+      const uint8Array = new Uint8Array(arrayBuffer)  // Uint8Arrayに変換（detached対策）
       const fileId = `file-${Date.now()}-${fileIndex}`
 
       try {
-        const pdf = await pdfjsRef.current.getDocument({ data: arrayBuffer }).promise
+        const pdf = await pdfjsRef.current.getDocument({ data: uint8Array.slice() }).promise
         const numPages = pdf.numPages
 
         for (let pageNum = 1; pageNum <= numPages; pageNum++) {
@@ -119,7 +140,7 @@ export default function EditorPage() {
             fileIndex: existingFileCount + fileIndex,
             pageNumber: pageNum,
             fileName: file.name,
-            pdfData: arrayBuffer,
+            pdfData: uint8Array,  // Uint8Arrayを保存
             status: 'pending',
           })
         }
@@ -146,7 +167,7 @@ export default function EditorPage() {
       }
       setStep('edit')
     }
-  }, [pages.length, selectedPageId])
+  }, [pages.length, selectedPageId, pdfjsReady])
 
   const handleMaskChange = useCallback(
     (newSettings: MaskSettings) => {
@@ -298,13 +319,13 @@ export default function EditorPage() {
             </Card>
           </div>
 
-          <div className="flex-1 flex justify-center overflow-auto">
-            {selectedPage && currentMaskSettings && (
+          <div ref={pdfContainerRef} className="flex-1 flex justify-center items-start overflow-auto py-4">
+            {selectedPage && currentMaskSettings && pdfMaxWidth > 0 && (
               <PdfViewer
                 pdfData={selectedPage.pdfData}
                 pageNumber={selectedPage.pageNumber}
                 maskSettings={currentMaskSettings}
-                scale={2.0}
+                maxWidth={pdfMaxWidth}
               />
             )}
           </div>

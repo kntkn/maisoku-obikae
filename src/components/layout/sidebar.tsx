@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
+import { useSidebar } from '@/contexts/sidebar-context'
 
 const navigation = [
   { name: 'ダッシュボード', href: '/dashboard', icon: HomeIcon },
@@ -35,11 +36,33 @@ function SettingsIcon({ className }: { className?: string }) {
   )
 }
 
+function ChevronLeftIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+    </svg>
+  )
+}
+
+function ChevronRightIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+    </svg>
+  )
+}
+
 export function Sidebar() {
   const pathname = usePathname()
+  const { isCollapsed, toggle } = useSidebar()
 
   return (
-    <aside className="fixed left-0 top-14 z-40 h-[calc(100vh-3.5rem)] w-64 border-r bg-white">
+    <aside
+      className={cn(
+        'fixed left-0 top-14 z-40 h-[calc(100vh-3.5rem)] border-r bg-white transition-all duration-300',
+        isCollapsed ? 'w-16' : 'w-64'
+      )}
+    >
       <nav className="flex flex-col gap-1 p-4">
         {navigation.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
@@ -51,15 +74,30 @@ export function Sidebar() {
                 'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
                 isActive
                   ? 'bg-gray-100 text-gray-900'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
+                isCollapsed && 'justify-center px-2'
               )}
+              title={isCollapsed ? item.name : undefined}
             >
-              <item.icon className="h-5 w-5" />
-              {item.name}
+              <item.icon className="h-5 w-5 flex-shrink-0" />
+              {!isCollapsed && <span>{item.name}</span>}
             </Link>
           )
         })}
       </nav>
+
+      {/* Toggle button */}
+      <button
+        onClick={toggle}
+        className="absolute -right-3 top-6 flex h-6 w-6 items-center justify-center rounded-full border bg-white shadow-sm hover:bg-gray-50 transition-colors"
+        title={isCollapsed ? 'メニューを開く' : 'メニューを閉じる'}
+      >
+        {isCollapsed ? (
+          <ChevronRightIcon className="h-4 w-4 text-gray-600" />
+        ) : (
+          <ChevronLeftIcon className="h-4 w-4 text-gray-600" />
+        )}
+      </button>
     </aside>
   )
 }

@@ -41,8 +41,13 @@ export function PdfUploader({ onFilesSelected }: PdfUploaderProps) {
     [onFilesSelected]
   )
 
-  const handleClick = useCallback(() => {
-    inputRef.current?.click()
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    // inputをクリックしてファイル選択ダイアログを開く
+    if (inputRef.current) {
+      inputRef.current.click()
+    }
   }, [])
 
   return (
@@ -57,10 +62,20 @@ export function PdfUploader({ onFilesSelected }: PdfUploaderProps) {
           <input
             ref={inputRef}
             type="file"
-            accept="application/pdf"
+            accept="application/pdf,.pdf"
             multiple
             onChange={handleFileInput}
-            className="sr-only"
+            style={{
+              position: 'absolute',
+              width: '1px',
+              height: '1px',
+              padding: 0,
+              margin: '-1px',
+              overflow: 'hidden',
+              clip: 'rect(0, 0, 0, 0)',
+              whiteSpace: 'nowrap',
+              border: 0,
+            }}
           />
           <div className="space-y-2">
             <svg

@@ -178,7 +178,8 @@ export function BlockEditor({
   )
 }
 
-// 初期ブロック生成
+// 初期ブロック生成（白塗り範囲内に適切なマージンで配置）
+// 会社名は大きく、その他の情報は小さめに
 export function createInitialBlocks(
   canvasWidth: number,
   canvasHeight: number,
@@ -186,34 +187,108 @@ export function createInitialBlocks(
   maskLeftWidth: number,
   enableLShape: boolean
 ): Block[] {
-  const startY = canvasHeight - maskBottomHeight + 10
-  const startX = enableLShape ? maskLeftWidth + 10 : 10
-  const lineHeight = 24
-  let currentY = startY
+  // マージン設定
+  const marginTop = 8
+  const marginBottom = 8
+  const marginX = 10
+
+  // 白塗り範囲の計算
+  const maskStartX = enableLShape ? maskLeftWidth : 0
+  const maskStartY = canvasHeight - maskBottomHeight
+  const availableWidth = enableLShape ? canvasWidth - maskLeftWidth - (marginX * 2) : canvasWidth - (marginX * 2)
+  const availableHeight = maskBottomHeight - marginTop - marginBottom
+
+  // フォントサイズ設定（白塗り高さに応じてスケール）
+  const baseScale = Math.min(1, maskBottomHeight / 100)
+  const companyNameFontSize = Math.max(11, Math.round(16 * baseScale))
+  const smallFontSize = Math.max(8, Math.round(10 * baseScale))
+
+  // 行高さ（フォントサイズに基づく）
+  const companyNameHeight = companyNameFontSize + 6
+  const smallLineHeight = smallFontSize + 6
+
+  // 2列レイアウト
+  const columnWidth = availableWidth / 2
+  const startX = maskStartX + marginX
+  const startY = maskStartY + marginTop
 
   const blocks: Block[] = []
+  const timestamp = Date.now()
 
-  const addTextBlock = (field: TextBlock['field'], width: number) => {
-    blocks.push({
-      id: `block-${field}-${Date.now()}`,
-      type: 'text',
-      field,
-      x: startX,
-      y: currentY,
-      width,
-      height: 20,
-      fontSize: 12,
-      fontWeight: field === 'company_name' ? 'bold' : 'normal',
-      textAlign: 'left',
-    })
-    currentY += lineHeight
-  }
+  // 左列: 会社名（大きめ）、免許番号（小さめ）
+  let leftY = startY
 
-  addTextBlock('company_name', 200)
-  addTextBlock('license_number', 250)
-  addTextBlock('address', 300)
-  addTextBlock('phone', 150)
-  addTextBlock('email', 200)
+  blocks.push({
+    id: `block-company_name-${timestamp}`,
+    type: 'text',
+    field: 'company_name',
+    x: startX,
+    y: leftY,
+    width: columnWidth - 5,
+    height: companyNameHeight,
+    fontSize: companyNameFontSize,
+    fontWeight: 'bold',
+    textAlign: 'left',
+  })
+  leftY += companyNameHeight + 4
+
+  blocks.push({
+    id: `block-license_number-${timestamp + 1}`,
+    type: 'text',
+    field: 'license_number',
+    x: startX,
+    y: leftY,
+    width: columnWidth - 5,
+    height: smallLineHeight,
+    fontSize: smallFontSize,
+    fontWeight: 'normal',
+    textAlign: 'left',
+  })
+
+  // 右列: 住所、電話、メール（全て小さめ）
+  const rightX = startX + columnWidth
+  let rightY = startY
+
+  blocks.push({
+    id: `block-address-${timestamp + 2}`,
+    type: 'text',
+    field: 'address',
+    x: rightX,
+    y: rightY,
+    width: columnWidth - 5,
+    height: smallLineHeight,
+    fontSize: smallFontSize,
+    fontWeight: 'normal',
+    textAlign: 'left',
+  })
+  rightY += smallLineHeight + 2
+
+  blocks.push({
+    id: `block-phone-${timestamp + 3}`,
+    type: 'text',
+    field: 'phone',
+    x: rightX,
+    y: rightY,
+    width: columnWidth - 5,
+    height: smallLineHeight,
+    fontSize: smallFontSize,
+    fontWeight: 'normal',
+    textAlign: 'left',
+  })
+  rightY += smallLineHeight + 2
+
+  blocks.push({
+    id: `block-email-${timestamp + 4}`,
+    type: 'text',
+    field: 'email',
+    x: rightX,
+    y: rightY,
+    width: columnWidth - 5,
+    height: smallLineHeight,
+    fontSize: smallFontSize,
+    fontWeight: 'normal',
+    textAlign: 'left',
+  })
 
   return blocks
 }
