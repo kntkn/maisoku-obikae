@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { loadPdf } from '@/lib/pdf'
 import { PdfUploader } from '@/components/editor/pdf-uploader'
 import { PdfViewer, type MaskSettings } from '@/components/editor/pdf-viewer'
 import { MaskControls } from '@/components/editor/mask-controls'
@@ -10,10 +11,7 @@ import { PreviewEditor } from '@/components/editor/preview-editor'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { toast } from 'sonner'
-import * as pdfjsLib from 'pdfjs-dist'
 import type { CompanyProfile } from '@/lib/database.types'
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js'
 
 type EditorStep = 'upload' | 'edit' | 'preview'
 
@@ -69,18 +67,18 @@ export default function EditorPage() {
     for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
       const file = files[fileIndex]
       const arrayBuffer = await file.arrayBuffer()
-      const fileId = `file-${Date.now()}-${fileIndex}` // ファイル単位のID
+      const fileId = `file-${Date.now()}-${fileIndex}`
 
       try {
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+        const pdf = await loadPdf(arrayBuffer)
         const numPages = pdf.numPages
 
         for (let pageNum = 1; pageNum <= numPages; pageNum++) {
           const pageId = `${fileId}-page-${pageNum}`
           newPages.push({
             id: pageId,
-            fileId, // 同じファイルのページは同じfileIdを共有
-            fileIndex: existingFileCount + fileIndex, // ファイル単位のインデックス
+            fileId,
+            fileIndex: existingFileCount + fileIndex,
             pageNumber: pageNum,
             fileName: file.name,
             pdfData: arrayBuffer,
@@ -95,7 +93,6 @@ export default function EditorPage() {
 
     if (newPages.length > 0) {
       setPages((prev) => [...prev, ...newPages])
-      // 初期マスク設定
       const newMaskSettings: PageMaskSettings = {}
       newPages.forEach((page) => {
         newMaskSettings[page.id] = {
@@ -147,11 +144,9 @@ export default function EditorPage() {
     setSelectedPageId(id)
     setPages((prev) =>
       prev.map((page) => {
-        // 選択されたページがpendingならeditingに
         if (page.id === id && page.status === 'pending') {
           return { ...page, status: 'editing' }
         }
-        // 前にeditingだったページをpendingに戻す（doneは除く）
         if (page.id !== id && page.status === 'editing') {
           return { ...page, status: 'pending' }
         }
@@ -253,12 +248,13 @@ export default function EditorPage() {
                     type="file"
                     accept="application/pdf"
                     multiple
-                    className="hidden"
+                    className="sr-only"
                     onChange={(e) => {
                       const files = Array.from(e.target.files || [])
                       if (files.length > 0) {
                         handleFilesSelected(files)
                       }
+                      e.target.value = ''
                     }}
                   />
                 </div>

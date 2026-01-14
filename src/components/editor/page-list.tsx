@@ -1,20 +1,18 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import * as pdfjsLib from 'pdfjs-dist'
+import { loadPdf, renderPdfPage } from '@/lib/pdf'
 import { cn } from '@/lib/utils'
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js'
 
 export interface PageInfo {
   id: string
-  fileId: string // ファイル単位のID（グループ化用）
+  fileId: string
   fileIndex: number
   pageNumber: number
   fileName: string
   pdfData: ArrayBuffer
   status: 'pending' | 'editing' | 'done'
-  canvasDimensions?: { width: number; height: number } // ページごとの寸法
+  canvasDimensions?: { width: number; height: number }
 }
 
 interface PageListProps {
@@ -57,21 +55,8 @@ function PageThumbnail({ page, isSelected, onClick }: PageThumbnailProps) {
       if (!canvasRef.current) return
 
       try {
-        const pdf = await pdfjsLib.getDocument({ data: page.pdfData }).promise
-        const pdfPage = await pdf.getPage(page.pageNumber)
-        const viewport = pdfPage.getViewport({ scale: 0.2 })
-
-        const canvas = canvasRef.current
-        const context = canvas.getContext('2d')
-        if (!context) return
-
-        canvas.width = viewport.width
-        canvas.height = viewport.height
-
-        await pdfPage.render({
-          canvas,
-          viewport,
-        }).promise
+        const pdf = await loadPdf(page.pdfData)
+        await renderPdfPage(pdf, page.pageNumber, canvasRef.current, 0.2)
       } catch (error) {
         console.error('Thumbnail render error:', error)
       }

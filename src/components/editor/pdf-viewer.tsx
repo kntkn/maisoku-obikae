@@ -1,10 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import * as pdfjsLib from 'pdfjs-dist'
-
-// PDF.js worker設定
-pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js'
+import { loadPdf, renderPdfPage } from '@/lib/pdf'
 
 export interface MaskSettings {
   bottomHeight: number
@@ -34,28 +31,14 @@ export function PdfViewer({
       if (!canvasRef.current || !overlayCanvasRef.current) return
 
       try {
-        const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise
-        const page = await pdf.getPage(pageNumber)
-        const viewport = page.getViewport({ scale })
-
-        const canvas = canvasRef.current
-        const context = canvas.getContext('2d')
-        if (!context) return
-
-        canvas.width = viewport.width
-        canvas.height = viewport.height
-
-        setDimensions({ width: viewport.width, height: viewport.height })
-
-        await page.render({
-          canvas,
-          viewport,
-        }).promise
+        const pdf = await loadPdf(pdfData)
+        const dims = await renderPdfPage(pdf, pageNumber, canvasRef.current, scale)
+        setDimensions(dims)
 
         // オーバーレイキャンバスの設定
         const overlayCanvas = overlayCanvasRef.current
-        overlayCanvas.width = viewport.width
-        overlayCanvas.height = viewport.height
+        overlayCanvas.width = dims.width
+        overlayCanvas.height = dims.height
       } catch (error) {
         console.error('PDF render error:', error)
       }

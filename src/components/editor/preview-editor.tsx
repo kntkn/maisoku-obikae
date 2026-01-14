@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
-import * as pdfjsLib from 'pdfjs-dist'
+import { loadPdf, renderPdfPage } from '@/lib/pdf'
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
 import { BlockEditor, createInitialBlocks } from './block-editor'
 import { BlockProperties } from './block-properties'
@@ -11,8 +11,6 @@ import { toast } from 'sonner'
 import type { CompanyProfile, Block, TextBlock } from '@/lib/database.types'
 import type { MaskSettings } from './pdf-viewer'
 import type { PageInfo } from './page-list'
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js'
 
 interface PreviewEditorProps {
   pages: PageInfo[]
@@ -46,49 +44,40 @@ export function PreviewEditor({
       if (!canvasRef.current || !currentPage) return
 
       try {
-        const pdf = await pdfjsLib.getDocument({ data: currentPage.pdfData }).promise
-        const page = await pdf.getPage(currentPage.pageNumber)
-        const viewport = page.getViewport({ scale })
+        const pdf = await loadPdf(currentPage.pdfData)
+        const dims = await renderPdfPage(pdf, currentPage.pageNumber, canvasRef.current, scale)
 
-        const canvas = canvasRef.current
-        const context = canvas.getContext('2d')
-        if (!context) return
-
-        canvas.width = viewport.width
-        canvas.height = viewport.height
-        setDimensions({ width: viewport.width, height: viewport.height })
-        // ページごとの寸法を保存
+        setDimensions(dims)
         setPageDimensions((prev) => ({
           ...prev,
-          [currentPage.id]: { width: viewport.width, height: viewport.height }
+          [currentPage.id]: dims
         }))
-
-        await page.render({
-          canvas,
-          viewport,
-        }).promise
 
         // 白塗り領域を描画
         if (currentMask) {
-          context.fillStyle = 'white'
-          // 下部
-          context.fillRect(
-            0,
-            canvas.height - currentMask.bottomHeight,
-            canvas.width,
-            currentMask.bottomHeight
-          )
-          // L字の左側
-          if (currentMask.enableLShape && currentMask.leftWidth > 0) {
-            context.fillRect(0, 0, currentMask.leftWidth, canvas.height - currentMask.bottomHeight)
+          const canvas = canvasRef.current
+          const context = canvas.getContext('2d')
+          if (context) {
+            context.fillStyle = 'white'
+            // 下部
+            context.fillRect(
+              0,
+              canvas.height - currentMask.bottomHeight,
+              canvas.width,
+              currentMask.bottomHeight
+            )
+            // L字の左側
+            if (currentMask.enableLShape && currentMask.leftWidth > 0) {
+              context.fillRect(0, 0, currentMask.leftWidth, canvas.height - currentMask.bottomHeight)
+            }
           }
         }
 
         // 初期ブロックがなければ生成
         if (!blocks[currentPage.id] && currentMask) {
           const initialBlocks = createInitialBlocks(
-            viewport.width,
-            viewport.height,
+            dims.width,
+            dims.height,
             currentMask.bottomHeight,
             currentMask.leftWidth,
             currentMask.enableLShape
@@ -154,7 +143,7 @@ export function PreviewEditor({
 
       const outputPdfs: { name: string; data: Uint8Array }[] = []
 
-      for (const [key, group] of pdfGroups) {
+      for (const [, group] of pdfGroups) {
         const pdfDoc = await PDFDocument.load(group.pdfData)
         const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica)
         const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
