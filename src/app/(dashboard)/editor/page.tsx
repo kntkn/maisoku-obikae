@@ -51,7 +51,9 @@ export default function EditorPage() {
     let mounted = true
     import('react-pdf').then((mod) => {
       if (!mounted) return
-      mod.pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${mod.pdfjs.version}/build/pdf.worker.min.mjs`
+      // CDNからworkerをロード（バージョンは動的に取得）
+      const version = mod.pdfjs.version
+      mod.pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${version}/build/pdf.worker.min.mjs`
       pdfjsRef.current = mod.pdfjs as unknown as PdfjsType
       setPdfjsReady(true)
     }).catch(err => {

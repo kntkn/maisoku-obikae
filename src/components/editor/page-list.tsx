@@ -56,7 +56,8 @@ function PageThumbnail({ page, isSelected, onClick }: PageThumbnailProps) {
 
   useEffect(() => {
     import('react-pdf').then((mod) => {
-      mod.pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${mod.pdfjs.version}/build/pdf.worker.min.mjs`
+      const version = mod.pdfjs.version
+      mod.pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${version}/build/pdf.worker.min.mjs`
       setIsReady(true)
     })
   }, [])
