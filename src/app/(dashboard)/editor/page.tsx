@@ -13,7 +13,7 @@ import { toast } from 'sonner'
 import * as pdfjsLib from 'pdfjs-dist'
 import type { CompanyProfile } from '@/lib/database.types'
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
+pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
 
 type EditorStep = 'upload' | 'edit' | 'preview'
 

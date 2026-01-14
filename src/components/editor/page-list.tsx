@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react'
 import * as pdfjsLib from 'pdfjs-dist'
 import { cn } from '@/lib/utils'
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
+pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
 
 export interface PageInfo {
   id: string

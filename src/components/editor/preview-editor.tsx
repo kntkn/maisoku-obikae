@@ -12,7 +12,7 @@ import type { CompanyProfile, Block, TextBlock } from '@/lib/database.types'
 import type { MaskSettings } from './pdf-viewer'
 import type { PageInfo } from './page-list'
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
+pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
 
 interface PreviewEditorProps {
   pages: PageInfo[]
