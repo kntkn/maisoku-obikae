@@ -1,26 +1,19 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
-import type { DocumentProps, PageProps } from 'react-pdf'
 import { cn } from '@/lib/utils'
 
 // react-pdfをクライアントサイドのみでロード
-const Document = dynamic<DocumentProps>(
+const Document = dynamic(
   () => import('react-pdf').then((mod) => mod.Document),
   { ssr: false }
 )
 
-const Page = dynamic<PageProps>(
+const Page = dynamic(
   () => import('react-pdf').then((mod) => mod.Page),
   { ssr: false }
 )
-
-// worker設定をクライアントサイドで実行
-if (typeof window !== 'undefined') {
-  import('react-pdf').then((mod) => {
-    mod.pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${mod.pdfjs.version}/build/pdf.worker.min.mjs`
-  })
-}
 
 export interface PageInfo {
   id: string
@@ -66,6 +59,15 @@ interface PageThumbnailProps {
 }
 
 function PageThumbnail({ page, isSelected, onClick }: PageThumbnailProps) {
+  const [isReady, setIsReady] = useState(false)
+
+  useEffect(() => {
+    import('react-pdf').then((mod) => {
+      mod.pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${mod.pdfjs.version}/build/pdf.worker.min.mjs`
+      setIsReady(true)
+    })
+  }, [])
+
   const statusColors = {
     pending: 'bg-gray-100',
     editing: 'bg-yellow-100',
@@ -87,15 +89,19 @@ function PageThumbnail({ page, isSelected, onClick }: PageThumbnailProps) {
       )}
     >
       <div className="flex gap-2">
-        <div className="w-16 flex-shrink-0 border rounded bg-white overflow-hidden">
-          <Document file={page.pdfData} loading={null} error={null}>
-            <Page
-              pageNumber={page.pageNumber}
-              width={60}
-              renderTextLayer={false}
-              renderAnnotationLayer={false}
-            />
-          </Document>
+        <div className="w-16 h-20 flex-shrink-0 border rounded bg-white overflow-hidden flex items-center justify-center">
+          {isReady ? (
+            <Document file={page.pdfData} loading={null} error={null}>
+              <Page
+                pageNumber={page.pageNumber}
+                width={60}
+                renderTextLayer={false}
+                renderAnnotationLayer={false}
+              />
+            </Document>
+          ) : (
+            <div className="text-xs text-gray-400">...</div>
+          )}
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-xs font-medium truncate">{page.fileName}</p>

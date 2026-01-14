@@ -1,26 +1,18 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import dynamic from 'next/dynamic'
-import type { DocumentProps, PageProps } from 'react-pdf'
 
 // react-pdfをクライアントサイドのみでロード
-const Document = dynamic<DocumentProps>(
+const Document = dynamic(
   () => import('react-pdf').then((mod) => mod.Document),
-  { ssr: false }
+  { ssr: false, loading: () => <div className="p-8 text-gray-500">読み込み中...</div> }
 )
 
-const Page = dynamic<PageProps>(
+const Page = dynamic(
   () => import('react-pdf').then((mod) => mod.Page),
   { ssr: false }
 )
-
-// worker設定をクライアントサイドで実行
-if (typeof window !== 'undefined') {
-  import('react-pdf').then((mod) => {
-    mod.pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${mod.pdfjs.version}/build/pdf.worker.min.mjs`
-  })
-}
 
 export interface MaskSettings {
   bottomHeight: number
@@ -42,6 +34,15 @@ export function PdfViewer({
   scale = 1.5,
 }: PdfViewerProps) {
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
+  const [isReady, setIsReady] = useState(false)
+
+  // worker設定をuseEffect内で実行
+  useEffect(() => {
+    import('react-pdf').then((mod) => {
+      mod.pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${mod.pdfjs.version}/build/pdf.worker.min.mjs`
+      setIsReady(true)
+    })
+  }, [])
 
   const onPageLoadSuccess = useCallback(
     (page: { width: number; height: number }) => {
@@ -49,6 +50,12 @@ export function PdfViewer({
     },
     [scale]
   )
+
+  if (!isReady) {
+    return (
+      <div className="p-8 text-gray-500">PDFライブラリを準備中...</div>
+    )
+  }
 
   return (
     <div className="relative inline-block border rounded-lg overflow-hidden shadow-lg">

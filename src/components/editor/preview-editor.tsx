@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import dynamic from 'next/dynamic'
-import type { DocumentProps, PageProps } from 'react-pdf'
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
 import { BlockEditor, createInitialBlocks } from './block-editor'
 import { BlockProperties } from './block-properties'
@@ -14,22 +13,15 @@ import type { MaskSettings } from './pdf-viewer'
 import type { PageInfo } from './page-list'
 
 // react-pdfをクライアントサイドのみでロード
-const Document = dynamic<DocumentProps>(
+const Document = dynamic(
   () => import('react-pdf').then((mod) => mod.Document),
-  { ssr: false }
+  { ssr: false, loading: () => <div className="p-8 text-gray-500">読み込み中...</div> }
 )
 
-const Page = dynamic<PageProps>(
+const Page = dynamic(
   () => import('react-pdf').then((mod) => mod.Page),
   { ssr: false }
 )
-
-// worker設定をクライアントサイドで実行
-if (typeof window !== 'undefined') {
-  import('react-pdf').then((mod) => {
-    mod.pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${mod.pdfjs.version}/build/pdf.worker.min.mjs`
-  })
-}
 
 interface PreviewEditorProps {
   pages: PageInfo[]
@@ -50,7 +42,16 @@ export function PreviewEditor({
   const [blocks, setBlocks] = useState<{ [pageId: string]: Block[] }>({})
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
+  const [isReady, setIsReady] = useState(false)
   const scale = 1.5
+
+  // worker設定をuseEffect内で実行
+  useEffect(() => {
+    import('react-pdf').then((mod) => {
+      mod.pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${mod.pdfjs.version}/build/pdf.worker.min.mjs`
+      setIsReady(true)
+    })
+  }, [])
 
   const currentPage = pages[currentPageIndex]
   const currentMask = currentPage ? maskSettings[currentPage.id] : null
@@ -272,7 +273,7 @@ export function PreviewEditor({
       <div className="grid grid-cols-12 gap-4">
         <div className="col-span-9">
           <div className="relative inline-block border rounded-lg overflow-hidden shadow-lg">
-            {currentPage && (
+            {currentPage && isReady ? (
               <Document
                 file={currentPage.pdfData}
                 loading={<div className="p-8 text-gray-500">PDFを読み込み中...</div>}
@@ -286,6 +287,8 @@ export function PreviewEditor({
                   renderAnnotationLayer={false}
                 />
               </Document>
+            ) : (
+              <div className="p-8 text-gray-500">PDFライブラリを準備中...</div>
             )}
 
             {dimensions.width > 0 && currentMask && (
