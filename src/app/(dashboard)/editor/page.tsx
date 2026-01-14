@@ -1,9 +1,7 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { pdfjs } from 'react-pdf'
-import '@/lib/pdf' // worker設定を読み込み
 import { PdfUploader } from '@/components/editor/pdf-uploader'
 import { PdfViewer, type MaskSettings } from '@/components/editor/pdf-viewer'
 import { MaskControls } from '@/components/editor/mask-controls'
@@ -27,8 +25,17 @@ export default function EditorPage() {
   const [maskSettings, setMaskSettings] = useState<PageMaskSettings>({})
   const [companyProfile, setCompanyProfile] = useState<CompanyProfile | null>(null)
   const [loadingProfile, setLoadingProfile] = useState(true)
+  const pdfjsRef = useRef<typeof import('react-pdf').pdfjs | null>(null)
 
   const supabase = createClient()
+
+  // pdfjs を動的にロード
+  useEffect(() => {
+    import('react-pdf').then((mod) => {
+      mod.pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${mod.pdfjs.version}/build/pdf.worker.min.mjs`
+      pdfjsRef.current = mod.pdfjs
+    })
+  }, [])
 
   // 会社情報を取得
   useEffect(() => {
@@ -62,6 +69,11 @@ export default function EditorPage() {
   }, [])
 
   const handleFilesSelected = useCallback(async (files: File[]) => {
+    if (!pdfjsRef.current) {
+      toast.error('PDFライブラリの読み込み中です。しばらくお待ちください。')
+      return
+    }
+
     const newPages: PageInfo[] = []
     const existingFileCount = new Set(pages.map(p => p.fileId)).size
 
@@ -71,8 +83,7 @@ export default function EditorPage() {
       const fileId = `file-${Date.now()}-${fileIndex}`
 
       try {
-        // react-pdfのpdfjsを使ってPDFを読み込み
-        const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise
+        const pdf = await pdfjsRef.current.getDocument({ data: arrayBuffer }).promise
         const numPages = pdf.numPages
 
         for (let pageNum = 1; pageNum <= numPages; pageNum++) {
@@ -132,7 +143,6 @@ export default function EditorPage() {
       )
     )
 
-    // 次の未完了ページを選択
     const currentIndex = pages.findIndex((p) => p.id === selectedPageId)
     const nextPage = pages.find(
       (p, i) => i > currentIndex && p.status !== 'done'
@@ -225,7 +235,6 @@ export default function EditorPage() {
 
       {step === 'edit' && (
         <div className="flex gap-4">
-          {/* 左サイドバー: ページリスト */}
           <div className="w-48 flex-shrink-0">
             <Card>
               <CardContent className="p-3">
@@ -264,7 +273,6 @@ export default function EditorPage() {
             </Card>
           </div>
 
-          {/* メインエリア: PDFビューア（大きく中央配置） */}
           <div className="flex-1 flex justify-center overflow-auto">
             {selectedPage && currentMaskSettings && (
               <PdfViewer
@@ -276,7 +284,6 @@ export default function EditorPage() {
             )}
           </div>
 
-          {/* 右サイドバー: コントロール */}
           <div className="w-64 flex-shrink-0 space-y-4">
             {currentMaskSettings && (
               <>

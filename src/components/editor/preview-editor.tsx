@@ -1,10 +1,8 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
-import { Document, Page, pdfjs } from 'react-pdf'
-import 'react-pdf/dist/Page/AnnotationLayer.css'
-import 'react-pdf/dist/Page/TextLayer.css'
-import '@/lib/pdf' // worker設定を読み込み
+import { useState, useCallback, useEffect } from 'react'
+import dynamic from 'next/dynamic'
+import type { DocumentProps, PageProps } from 'react-pdf'
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
 import { BlockEditor, createInitialBlocks } from './block-editor'
 import { BlockProperties } from './block-properties'
@@ -14,6 +12,24 @@ import { toast } from 'sonner'
 import type { CompanyProfile, Block, TextBlock } from '@/lib/database.types'
 import type { MaskSettings } from './pdf-viewer'
 import type { PageInfo } from './page-list'
+
+// react-pdfをクライアントサイドのみでロード
+const Document = dynamic<DocumentProps>(
+  () => import('react-pdf').then((mod) => mod.Document),
+  { ssr: false }
+)
+
+const Page = dynamic<PageProps>(
+  () => import('react-pdf').then((mod) => mod.Page),
+  { ssr: false }
+)
+
+// worker設定をクライアントサイドで実行
+if (typeof window !== 'undefined') {
+  import('react-pdf').then((mod) => {
+    mod.pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${mod.pdfjs.version}/build/pdf.worker.min.mjs`
+  })
+}
 
 interface PreviewEditorProps {
   pages: PageInfo[]
@@ -107,7 +123,6 @@ export function PreviewEditor({
   const handleExport = async () => {
     setExporting(true)
     try {
-      // 処理するページをグループ化（fileIdで同じPDFファイルをまとめる）
       const pdfGroups = new Map<string, { pages: PageInfo[]; pdfData: ArrayBuffer }>()
 
       for (const page of pages) {
@@ -132,11 +147,9 @@ export function PreviewEditor({
           const pdfPage = pdfDoc.getPage(page.pageNumber - 1)
           const { width, height } = pdfPage.getSize()
 
-          // ページごとの寸法を使用してスケール補正
           const dims = pageDimensions[page.id] || { width: width, height: height }
           const scaleRatio = width / dims.width
 
-          // 白塗り
           pdfPage.drawRectangle({
             x: 0,
             y: 0,
@@ -155,7 +168,6 @@ export function PreviewEditor({
             })
           }
 
-          // テキストブロック描画
           for (const block of pageBlocks) {
             if (block.type !== 'text' || !companyProfile) continue
 
@@ -166,7 +178,6 @@ export function PreviewEditor({
             const font = textBlock.fontWeight === 'bold' ? helveticaBold : helveticaFont
             const fontSize = textBlock.fontSize * scaleRatio
 
-            // テキスト幅を計算してtextAlignを適用
             const textWidth = font.widthOfTextAtSize(content, fontSize)
             const blockWidthPdf = textBlock.width * scaleRatio
             let x = textBlock.x * scaleRatio
@@ -177,7 +188,6 @@ export function PreviewEditor({
               x += blockWidthPdf - textWidth
             }
 
-            // PDF座標系は下からなので変換
             const y = height - (textBlock.y + textBlock.height) * scaleRatio
 
             pdfPage.drawText(content, {
@@ -197,7 +207,6 @@ export function PreviewEditor({
         })
       }
 
-      // ダウンロード
       for (const pdf of outputPdfs) {
         const blob = new Blob([new Uint8Array(pdf.data)], { type: 'application/pdf' })
         const url = URL.createObjectURL(blob)
@@ -236,7 +245,6 @@ export function PreviewEditor({
         </div>
       </div>
 
-      {/* ページ切り替え */}
       {pages.length > 1 && (
         <div className="flex items-center gap-2">
           <Button
@@ -262,7 +270,6 @@ export function PreviewEditor({
       )}
 
       <div className="grid grid-cols-12 gap-4">
-        {/* PDFビューア + ブロックエディタ */}
         <div className="col-span-9">
           <div className="relative inline-block border rounded-lg overflow-hidden shadow-lg">
             {currentPage && (
@@ -281,13 +288,11 @@ export function PreviewEditor({
               </Document>
             )}
 
-            {/* 白塗りオーバーレイ */}
             {dimensions.width > 0 && currentMask && (
               <div
                 className="absolute top-0 left-0 pointer-events-none"
                 style={{ width: dimensions.width, height: dimensions.height }}
               >
-                {/* 下部の白塗り */}
                 {currentMask.bottomHeight > 0 && (
                   <div
                     className="absolute left-0 right-0 bg-white"
@@ -298,7 +303,6 @@ export function PreviewEditor({
                   />
                 )}
 
-                {/* L字の左側白塗り */}
                 {currentMask.enableLShape && currentMask.leftWidth > 0 && (
                   <div
                     className="absolute top-0 left-0 bg-white"
@@ -311,7 +315,6 @@ export function PreviewEditor({
               </div>
             )}
 
-            {/* ブロックエディタ */}
             {dimensions.width > 0 && currentMask && (
               <BlockEditor
                 canvasWidth={dimensions.width}
@@ -329,7 +332,6 @@ export function PreviewEditor({
           </div>
         </div>
 
-        {/* ブロック設定パネル */}
         <div className="col-span-3">
           <BlockProperties
             block={selectedBlock}

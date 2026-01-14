@@ -1,10 +1,26 @@
 'use client'
 
-import { Document, Page } from 'react-pdf'
-import 'react-pdf/dist/Page/AnnotationLayer.css'
-import 'react-pdf/dist/Page/TextLayer.css'
-import '@/lib/pdf' // worker設定を読み込み
+import dynamic from 'next/dynamic'
+import type { DocumentProps, PageProps } from 'react-pdf'
 import { cn } from '@/lib/utils'
+
+// react-pdfをクライアントサイドのみでロード
+const Document = dynamic<DocumentProps>(
+  () => import('react-pdf').then((mod) => mod.Document),
+  { ssr: false }
+)
+
+const Page = dynamic<PageProps>(
+  () => import('react-pdf').then((mod) => mod.Page),
+  { ssr: false }
+)
+
+// worker設定をクライアントサイドで実行
+if (typeof window !== 'undefined') {
+  import('react-pdf').then((mod) => {
+    mod.pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${mod.pdfjs.version}/build/pdf.worker.min.mjs`
+  })
+}
 
 export interface PageInfo {
   id: string
