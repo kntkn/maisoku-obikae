@@ -12,14 +12,19 @@ export async function POST(request: NextRequest) {
     const body: LogExportRequest = await request.json()
     const { fileName, userEmail, companyName, pageCount } = body
 
-    const notionApiKey = process.env.NOTION_API_KEY
-    const databaseId = process.env.NOTION_MAISOKU_LOG_DB_ID
+    const notionApiKey = process.env.NOTION_API_KEY?.trim()
+    const rawDatabaseId = process.env.NOTION_MAISOKU_LOG_DB_ID?.trim()
 
     // 環境変数がない場合は静かに終了（開発環境等）
-    if (!notionApiKey || !databaseId) {
+    if (!notionApiKey || !rawDatabaseId) {
       console.log('[log-export] Notion credentials not configured, skipping log')
       return NextResponse.json({ success: true, skipped: true })
     }
+
+    // database_idをUUID形式に変換（ハイフンがない場合は追加）
+    const databaseId = rawDatabaseId.includes('-')
+      ? rawDatabaseId
+      : rawDatabaseId.replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5')
 
     // Notion APIでページを作成
     const response = await fetch('https://api.notion.com/v1/pages', {
