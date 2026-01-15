@@ -68,7 +68,8 @@ export async function POST(request: NextRequest) {
     if (!response.ok) {
       const errorData = await response.text()
       console.error('[log-export] Notion API error:', errorData)
-      return NextResponse.json({ success: false, error: 'Notion API error' }, { status: 500 })
+      // デバッグ用：エラー詳細を返す
+      return NextResponse.json({ success: false, error: 'Notion API error', details: errorData }, { status: 500 })
     }
 
     return NextResponse.json({ success: true })
