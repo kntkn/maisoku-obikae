@@ -40,6 +40,7 @@ export default function EditorPage() {
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null)
   const [maskSettings, setMaskSettings] = useState<PageMaskSettings>({})
   const [companyProfile, setCompanyProfile] = useState<CompanyProfile | null>(null)
+  const [userEmail, setUserEmail] = useState<string>('')
   const [loadingProfile, setLoadingProfile] = useState(true)
   const [pdfjsReady, setPdfjsReady] = useState(false)
   const pdfjsRef = useRef<PdfjsType | null>(null)
@@ -88,6 +89,11 @@ export default function EditorPage() {
       try {
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return
+
+        // ユーザーのメールアドレスを保存（ログ記録用）
+        if (user.email) {
+          setUserEmail(user.email)
+        }
 
         const { data, error } = await supabase
           .from('company_profiles')
@@ -381,6 +387,7 @@ export default function EditorPage() {
           pages={pages}
           maskSettings={maskSettings}
           companyProfile={companyProfile}
+          userEmail={userEmail}
           onBack={() => setStep('edit')}
         />
       )}
