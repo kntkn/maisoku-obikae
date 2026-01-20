@@ -21,6 +21,11 @@ export interface Database {
           contact_person: string | null
           license_number: string
           logo_url: string | null
+          line_qr_url: string | null
+          fee_ratio_landlord: number | null
+          fee_ratio_tenant: number | null
+          fee_distribution_motoduke: number | null
+          fee_distribution_kyakuzuke: number | null
           created_at: string
           updated_at: string
         }
@@ -35,6 +40,11 @@ export interface Database {
           contact_person?: string | null
           license_number: string
           logo_url?: string | null
+          line_qr_url?: string | null
+          fee_ratio_landlord?: number | null
+          fee_ratio_tenant?: number | null
+          fee_distribution_motoduke?: number | null
+          fee_distribution_kyakuzuke?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -49,6 +59,11 @@ export interface Database {
           contact_person?: string | null
           license_number?: string
           logo_url?: string | null
+          line_qr_url?: string | null
+          fee_ratio_landlord?: number | null
+          fee_ratio_tenant?: number | null
+          fee_distribution_motoduke?: number | null
+          fee_distribution_kyakuzuke?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -105,7 +120,7 @@ export type LayoutTemplateUpdate = Database['public']['Tables']['layout_template
 export interface TextBlock {
   id: string
   type: 'text'
-  field: 'company_name' | 'address' | 'phone' | 'fax' | 'email' | 'contact_person' | 'license_number'
+  field: 'company_name' | 'address' | 'phone' | 'fax' | 'email' | 'contact_person' | 'license_number' | 'fee_ratio_landlord' | 'fee_ratio_tenant' | 'fee_distribution_motoduke' | 'fee_distribution_kyakuzuke'
   x: number
   y: number
   width: number
@@ -118,7 +133,7 @@ export interface TextBlock {
 export interface ImageBlock {
   id: string
   type: 'image'
-  field: 'logo'
+  field: 'logo' | 'line_qr'
   x: number
   y: number
   width: number

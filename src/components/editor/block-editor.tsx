@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useCallback, useEffect } from 'react'
-import type { CompanyProfile, Block, TextBlock } from '@/lib/database.types'
+import type { CompanyProfile, Block, TextBlock, ImageBlock } from '@/lib/database.types'
 
 interface BlockEditorProps {
   canvasWidth: number
@@ -24,6 +24,15 @@ const FIELD_LABELS: Record<TextBlock['field'], string> = {
   email: 'メール',
   contact_person: '担当者',
   license_number: '免許番号',
+  fee_ratio_landlord: '貸主負担',
+  fee_ratio_tenant: '借主負担',
+  fee_distribution_motoduke: '元付配分',
+  fee_distribution_kyakuzuke: '客付配分',
+}
+
+const IMAGE_LABELS: Record<ImageBlock['field'], string> = {
+  logo: 'ロゴ',
+  line_qr: 'LINE QR',
 }
 
 export function BlockEditor({
@@ -99,9 +108,22 @@ export function BlockEditor({
     }
   }, [dragging, handleMouseMove, handleMouseUp])
 
-  const getBlockContent = (block: Block): string => {
-    if (block.type === 'image') return '[ロゴ]'
+  const getBlockContent = (block: Block): string | React.ReactNode => {
+    if (block.type === 'image') {
+      const imageUrl = block.field === 'logo'
+        ? companyProfile?.logo_url
+        : companyProfile?.line_qr_url
+      return `[${IMAGE_LABELS[block.field]}]`
+    }
+
     if (!companyProfile) return FIELD_LABELS[block.field]
+
+    // 手数料フィールドの場合はラベル付きで表示
+    if (block.field.startsWith('fee_')) {
+      const value = companyProfile[block.field as keyof CompanyProfile] as number | null
+      if (value === null || value === undefined) return `[${FIELD_LABELS[block.field]}]`
+      return `${FIELD_LABELS[block.field]}: ${value}%`
+    }
 
     const value = companyProfile[block.field as keyof CompanyProfile]
     return (value as string) || FIELD_LABELS[block.field]
@@ -162,12 +184,15 @@ export function BlockEditor({
             fontSize: block.type === 'text' ? block.fontSize : undefined,
             fontWeight: block.type === 'text' ? block.fontWeight : undefined,
             textAlign: block.type === 'text' ? block.textAlign : undefined,
-            backgroundColor: 'rgba(255, 255, 255, 0.9)',
-            border: '1px solid #ccc',
+            backgroundColor: block.type === 'image' ? 'rgba(200, 200, 255, 0.3)' : 'rgba(255, 255, 255, 0.9)',
+            border: block.type === 'image' ? '2px dashed #6366f1' : '1px solid #ccc',
             padding: '2px 4px',
             overflow: 'hidden',
             whiteSpace: 'nowrap',
             textOverflow: 'ellipsis',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: block.type === 'image' ? 'center' : undefined,
           }}
           onMouseDown={(e) => handleMouseDown(e, block)}
         >
@@ -179,23 +204,25 @@ export function BlockEditor({
 }
 
 // 初期ブロック生成（白塗り範囲内に適切なマージンで配置）
-// 会社名は大きく、その他の情報は小さめに
+// 3分割レイアウト: [ロゴ（左端）] [テキスト情報（中央）] [QR（右端）]
 export function createInitialBlocks(
   canvasWidth: number,
   canvasHeight: number,
   maskBottomHeight: number,
   maskLeftWidth: number,
-  enableLShape: boolean
+  enableLShape: boolean,
+  companyProfile: CompanyProfile | null
 ): Block[] {
   // マージン設定
   const marginTop = 8
   const marginBottom = 8
   const marginX = 10
+  const gapBetweenSections = 10
 
   // 白塗り範囲の計算
   const maskStartX = enableLShape ? maskLeftWidth : 0
   const maskStartY = canvasHeight - maskBottomHeight
-  const availableWidth = enableLShape ? canvasWidth - maskLeftWidth - (marginX * 2) : canvasWidth - (marginX * 2)
+  const totalAvailableWidth = (enableLShape ? canvasWidth - maskLeftWidth : canvasWidth) - (marginX * 2)
   const availableHeight = maskBottomHeight - marginTop - marginBottom
 
   // フォントサイズ設定（白塗り高さに応じてスケール）
@@ -207,22 +234,62 @@ export function createInitialBlocks(
   const companyNameHeight = companyNameFontSize + 6
   const smallLineHeight = smallFontSize + 6
 
-  // 2列レイアウト
-  const columnWidth = availableWidth / 2
-  const startX = maskStartX + marginX
-  const startY = maskStartY + marginTop
-
   const blocks: Block[] = []
   const timestamp = Date.now()
 
-  // 左列: 会社名（大きめ）、免許番号（小さめ）
+  // 画像サイズの計算
+  const hasLogo = !!companyProfile?.logo_url
+  const hasQr = !!companyProfile?.line_qr_url
+  const imageSize = Math.min(availableHeight, availableHeight * 0.9) // 高さに合わせた正方形
+
+  // ロゴブロック（左端）
+  let logoWidth = 0
+  if (hasLogo) {
+    logoWidth = imageSize
+    blocks.push({
+      id: `block-logo-${timestamp}`,
+      type: 'image',
+      field: 'logo',
+      x: maskStartX + marginX,
+      y: maskStartY + marginTop + (availableHeight - imageSize) / 2,
+      width: imageSize,
+      height: imageSize,
+    })
+  }
+
+  // QRブロック（右端）
+  let qrWidth = 0
+  if (hasQr) {
+    qrWidth = imageSize
+    blocks.push({
+      id: `block-line_qr-${timestamp + 1}`,
+      type: 'image',
+      field: 'line_qr',
+      x: maskStartX + marginX + totalAvailableWidth - imageSize,
+      y: maskStartY + marginTop + (availableHeight - imageSize) / 2,
+      width: imageSize,
+      height: imageSize,
+    })
+  }
+
+  // テキスト領域の計算
+  const textStartX = maskStartX + marginX + (hasLogo ? logoWidth + gapBetweenSections : 0)
+  const textAreaWidth = totalAvailableWidth
+    - (hasLogo ? logoWidth + gapBetweenSections : 0)
+    - (hasQr ? qrWidth + gapBetweenSections : 0)
+
+  // テキストブロック用の2列レイアウト
+  const columnWidth = textAreaWidth / 2
+  const startY = maskStartY + marginTop
+
+  // 左列: 会社名（大きめ）、免許番号、手数料情報
   let leftY = startY
 
   blocks.push({
-    id: `block-company_name-${timestamp}`,
+    id: `block-company_name-${timestamp + 2}`,
     type: 'text',
     field: 'company_name',
-    x: startX,
+    x: textStartX,
     y: leftY,
     width: columnWidth - 5,
     height: companyNameHeight,
@@ -230,13 +297,13 @@ export function createInitialBlocks(
     fontWeight: 'bold',
     textAlign: 'left',
   })
-  leftY += companyNameHeight + 4
+  leftY += companyNameHeight + 2
 
   blocks.push({
-    id: `block-license_number-${timestamp + 1}`,
+    id: `block-license_number-${timestamp + 3}`,
     type: 'text',
     field: 'license_number',
-    x: startX,
+    x: textStartX,
     y: leftY,
     width: columnWidth - 5,
     height: smallLineHeight,
@@ -244,13 +311,72 @@ export function createInitialBlocks(
     fontWeight: 'normal',
     textAlign: 'left',
   })
+  leftY += smallLineHeight + 2
+
+  // 手数料情報（設定されている場合のみ）
+  if (companyProfile?.fee_ratio_landlord !== null && companyProfile?.fee_ratio_landlord !== undefined) {
+    blocks.push({
+      id: `block-fee_ratio_landlord-${timestamp + 4}`,
+      type: 'text',
+      field: 'fee_ratio_landlord',
+      x: textStartX,
+      y: leftY,
+      width: (columnWidth - 5) / 2 - 2,
+      height: smallLineHeight,
+      fontSize: smallFontSize,
+      fontWeight: 'normal',
+      textAlign: 'left',
+    })
+
+    blocks.push({
+      id: `block-fee_ratio_tenant-${timestamp + 5}`,
+      type: 'text',
+      field: 'fee_ratio_tenant',
+      x: textStartX + (columnWidth - 5) / 2,
+      y: leftY,
+      width: (columnWidth - 5) / 2 - 2,
+      height: smallLineHeight,
+      fontSize: smallFontSize,
+      fontWeight: 'normal',
+      textAlign: 'left',
+    })
+    leftY += smallLineHeight + 2
+  }
+
+  if (companyProfile?.fee_distribution_motoduke !== null && companyProfile?.fee_distribution_motoduke !== undefined) {
+    blocks.push({
+      id: `block-fee_distribution_motoduke-${timestamp + 6}`,
+      type: 'text',
+      field: 'fee_distribution_motoduke',
+      x: textStartX,
+      y: leftY,
+      width: (columnWidth - 5) / 2 - 2,
+      height: smallLineHeight,
+      fontSize: smallFontSize,
+      fontWeight: 'normal',
+      textAlign: 'left',
+    })
+
+    blocks.push({
+      id: `block-fee_distribution_kyakuzuke-${timestamp + 7}`,
+      type: 'text',
+      field: 'fee_distribution_kyakuzuke',
+      x: textStartX + (columnWidth - 5) / 2,
+      y: leftY,
+      width: (columnWidth - 5) / 2 - 2,
+      height: smallLineHeight,
+      fontSize: smallFontSize,
+      fontWeight: 'normal',
+      textAlign: 'left',
+    })
+  }
 
   // 右列: 住所、電話、メール（全て小さめ）
-  const rightX = startX + columnWidth
+  const rightX = textStartX + columnWidth
   let rightY = startY
 
   blocks.push({
-    id: `block-address-${timestamp + 2}`,
+    id: `block-address-${timestamp + 8}`,
     type: 'text',
     field: 'address',
     x: rightX,
@@ -264,7 +390,7 @@ export function createInitialBlocks(
   rightY += smallLineHeight + 2
 
   blocks.push({
-    id: `block-phone-${timestamp + 3}`,
+    id: `block-phone-${timestamp + 9}`,
     type: 'text',
     field: 'phone',
     x: rightX,
@@ -278,7 +404,7 @@ export function createInitialBlocks(
   rightY += smallLineHeight + 2
 
   blocks.push({
-    id: `block-email-${timestamp + 4}`,
+    id: `block-email-${timestamp + 10}`,
     type: 'text',
     field: 'email',
     x: rightX,

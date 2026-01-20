@@ -2,14 +2,14 @@
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import dynamic from 'next/dynamic'
-import { PDFDocument, rgb, degrees } from 'pdf-lib'
+import { PDFDocument, rgb, degrees, PDFImage } from 'pdf-lib'
 import fontkit from '@pdf-lib/fontkit'
 import { BlockEditor, createInitialBlocks } from './block-editor'
 import { BlockProperties } from './block-properties'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { toast } from 'sonner'
-import type { CompanyProfile, Block, TextBlock } from '@/lib/database.types'
+import type { CompanyProfile, Block, TextBlock, ImageBlock } from '@/lib/database.types'
 import type { MaskSettings, PageInfo } from '@/types/editor'
 
 // react-pdfをクライアントサイドのみでロード
@@ -29,6 +29,14 @@ interface PreviewEditorProps {
   companyProfile: CompanyProfile | null
   userEmail?: string
   onBack: () => void
+}
+
+// 手数料フィールドのラベル
+const FEE_LABELS: Record<string, string> = {
+  fee_ratio_landlord: '貸主負担',
+  fee_ratio_tenant: '借主負担',
+  fee_distribution_motoduke: '元付配分',
+  fee_distribution_kyakuzuke: '客付配分',
 }
 
 export function PreviewEditor({
@@ -117,12 +125,13 @@ export function PreviewEditor({
           page.height,
           currentMask.bottomHeight * scale,
           currentMask.leftWidth * scale,
-          currentMask.enableLShape
+          currentMask.enableLShape,
+          companyProfile
         )
         return { ...prev, [currentPage.id]: initialBlocks }
       })
     },
-    [currentPage?.id, currentMask, scale, originalPageSize.width, maxWidth]
+    [currentPage?.id, currentMask, scale, originalPageSize.width, maxWidth, companyProfile]
   )
 
   const handleBlocksChange = useCallback(
@@ -218,6 +227,41 @@ export function PreviewEditor({
     }
   }
 
+  // 画像を埋め込む関数
+  const embedImage = async (pdfDoc: PDFDocument, imageUrl: string): Promise<PDFImage | null> => {
+    try {
+      const response = await fetch(imageUrl)
+      if (!response.ok) {
+        console.error('Failed to fetch image:', imageUrl)
+        return null
+      }
+      const imageData = await response.arrayBuffer()
+      const lowerUrl = imageUrl.toLowerCase()
+
+      // 画像形式を判定して埋め込み
+      if (lowerUrl.includes('.png') || lowerUrl.includes('png')) {
+        return await pdfDoc.embedPng(imageData)
+      } else if (lowerUrl.includes('.jpg') || lowerUrl.includes('.jpeg') || lowerUrl.includes('jpeg')) {
+        return await pdfDoc.embedJpg(imageData)
+      } else {
+        // フォールバック: JPEGとして試す、失敗したらPNG
+        try {
+          return await pdfDoc.embedJpg(imageData)
+        } catch {
+          try {
+            return await pdfDoc.embedPng(imageData)
+          } catch {
+            console.error('Failed to embed image as JPG or PNG')
+            return null
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error embedding image:', error)
+      return null
+    }
+  }
+
   // PDF出力（全ページを1つのPDFに統合）
   const handleExport = async () => {
     setExporting(true)
@@ -246,6 +290,23 @@ export function PreviewEditor({
       const japaneseFont = await mergedPdf.embedFont(fontBytes)
       const japaneseFontBold = await mergedPdf.embedFont(fontBoldBytes)
 
+      // 画像キャッシュ（同じ画像を複数ページで使い回す）
+      const imageCache: { [url: string]: PDFImage } = {}
+
+      // 画像を事前に埋め込み（キャッシュ）
+      if (companyProfile?.logo_url) {
+        const logoImage = await embedImage(mergedPdf, companyProfile.logo_url)
+        if (logoImage) {
+          imageCache[companyProfile.logo_url] = logoImage
+        }
+      }
+      if (companyProfile?.line_qr_url) {
+        const qrImage = await embedImage(mergedPdf, companyProfile.line_qr_url)
+        if (qrImage) {
+          imageCache[companyProfile.line_qr_url] = qrImage
+        }
+      }
+
       // 各ページを処理
       for (let i = 0; i < pages.length; i++) {
         const page = pages[i]
@@ -272,19 +333,12 @@ export function PreviewEditor({
           pageBlocks: pageBlocks.length,
         })
 
-        // pdf-libでは回転属性があるページに描画する際、
-        // 描画座標は回転前の座標系で指定するが、
-        // 表示時にページ全体が回転される
-        // よって、表示上の「下部」に白塗りするには、
-        // 回転前の座標系で「回転後に下部になる位置」を指定する必要がある
-
         // 回転を考慮した実際の表示サイズを計算
         const isRotated = rotation === 90 || rotation === 270
-        const displayWidth = isRotated ? rawHeight : rawWidth  // 表示上の幅
-        const displayHeight = isRotated ? rawWidth : rawHeight  // 表示上の高さ
+        const displayWidth = isRotated ? rawHeight : rawWidth
+        const displayHeight = isRotated ? rawWidth : rawHeight
 
         const dims = pageDimensions[page.id] || { width: displayWidth, height: displayHeight }
-        // scaleRatioは表示座標からPDF座標への変換比率
         const scaleRatio = displayWidth / dims.width
 
         console.log(`[PDF Export] Page ${i + 1} scaleRatio:`, {
@@ -293,60 +347,36 @@ export function PreviewEditor({
           scaleRatio,
         })
 
-        // 回転がある場合は、ページの回転を解除してコンテンツを正規化する
-        // これにより、座標計算がシンプルになる
-        if (rotation !== 0) {
-          // 回転を0に設定（ページ属性のみ変更、コンテンツは変わらない）
-          // pdf-libでは、これだけだとコンテンツが回転して表示される問題がある
-          // 代わりに、回転を維持したまま、正しい座標で描画する
-        }
-
         // 白塗り（下部）
-        // PDFの座標系は左下原点、y軸上向き
-        // 回転0度: y=0が下端なので、y=0から描画
-        // 回転90度（反時計回り）: 元の左端(x=0)が表示上の下端になる
-        // 回転180度: 元の上端(y=rawHeight)が表示上の下端になる
-        // 回転270度: 元の右端(x=rawWidth)が表示上の下端になる
-
-        const bottomMaskHeight = mask.bottomHeight // PDF座標での高さ（スケール前）
+        const bottomMaskHeight = mask.bottomHeight
 
         let maskX: number, maskY: number, maskW: number, maskH: number
 
         switch (rotation) {
           case 90:
-            // 90度反時計回り回転: 元の左側が表示上の下部になる
-            // 元のページで x=0 から width=bottomMaskHeight の範囲が表示上の下部
             maskX = 0
             maskY = 0
             maskW = bottomMaskHeight
-            maskH = rawHeight  // 表示上の幅 = 元の高さ
+            maskH = rawHeight
             break
           case 180:
-            // 180度回転: 元の上部が表示上の下部になる
             maskX = 0
             maskY = rawHeight - bottomMaskHeight
             maskW = rawWidth
             maskH = bottomMaskHeight
             break
           case 270:
-            // 270度反時計回り（=90度時計回り）: 元の右側が表示上の下部になる
             maskX = rawWidth - bottomMaskHeight
             maskY = 0
             maskW = bottomMaskHeight
             maskH = rawHeight
             break
           default:
-            // 回転なし
             maskX = 0
             maskY = 0
             maskW = rawWidth
             maskH = bottomMaskHeight
         }
-
-        console.log(`[PDF Export] Page ${i + 1} bottomMask:`, {
-          rotation,
-          mask: { x: maskX, y: maskY, w: maskW, h: maskH },
-        })
 
         pdfPage.drawRectangle({
           x: maskX,
@@ -363,28 +393,24 @@ export function PreviewEditor({
 
           switch (rotation) {
             case 90:
-              // 元の下部が表示上の左側になる
               leftX = 0
               leftY = 0
-              leftW = rawWidth - bottomMaskHeight  // 元の幅 - 下部マスク分
+              leftW = rawWidth - bottomMaskHeight
               leftH = leftMaskWidth
               break
             case 180:
-              // 元の右部が表示上の左側になる
               leftX = rawWidth - leftMaskWidth
               leftY = 0
               leftW = leftMaskWidth
               leftH = rawHeight - bottomMaskHeight
               break
             case 270:
-              // 元の上部が表示上の左側になる
-              leftX = bottomMaskHeight  // 下部マスクの後ろから
+              leftX = bottomMaskHeight
               leftY = rawHeight - leftMaskWidth
               leftW = rawWidth - bottomMaskHeight
               leftH = leftMaskWidth
               break
             default:
-              // 回転なし
               leftX = 0
               leftY = bottomMaskHeight
               leftW = leftMaskWidth
@@ -400,13 +426,92 @@ export function PreviewEditor({
           })
         }
 
+        // 画像ブロックを描画
+        for (const block of pageBlocks) {
+          if (block.type !== 'image' || !companyProfile) continue
+
+          const imageBlock = block as ImageBlock
+          const imageUrl = imageBlock.field === 'logo'
+            ? companyProfile.logo_url
+            : companyProfile.line_qr_url
+
+          if (!imageUrl) continue
+          const embeddedImage = imageCache[imageUrl]
+          if (!embeddedImage) continue
+
+          const drawWidth = imageBlock.width * scaleRatio
+          const drawHeight = imageBlock.height * scaleRatio
+          const blockX = imageBlock.x * scaleRatio
+          const blockY = imageBlock.y * scaleRatio
+
+          // 回転に応じてPDF座標に変換
+          let pdfX: number, pdfY: number
+          let imageRotation = 0
+
+          switch (rotation) {
+            case 90:
+              pdfX = blockY
+              pdfY = rawHeight - blockX - drawWidth
+              imageRotation = -90
+              break
+            case 180:
+              pdfX = displayWidth - blockX - drawWidth
+              pdfY = blockY
+              imageRotation = 180
+              break
+            case 270:
+              pdfX = rawWidth - blockY - drawHeight
+              pdfY = blockX
+              imageRotation = 90
+              break
+            default:
+              pdfX = blockX
+              pdfY = displayHeight - blockY - drawHeight
+              imageRotation = 0
+          }
+
+          console.log(`[PDF Export] Page ${i + 1} image "${imageBlock.field}":`, {
+            rotation,
+            block: { x: blockX, y: blockY, w: drawWidth, h: drawHeight },
+            pdf: { x: pdfX, y: pdfY },
+            imageRotation,
+          })
+
+          if (imageRotation !== 0) {
+            // 回転が必要な場合
+            pdfPage.drawImage(embeddedImage, {
+              x: pdfX,
+              y: pdfY,
+              width: imageRotation === 90 || imageRotation === -90 ? drawHeight : drawWidth,
+              height: imageRotation === 90 || imageRotation === -90 ? drawWidth : drawHeight,
+              rotate: degrees(imageRotation),
+            })
+          } else {
+            pdfPage.drawImage(embeddedImage, {
+              x: pdfX,
+              y: pdfY,
+              width: drawWidth,
+              height: drawHeight,
+            })
+          }
+        }
+
         // テキストブロックを描画
         for (const block of pageBlocks) {
           if (block.type !== 'text' || !companyProfile) continue
 
           const textBlock = block as TextBlock
-          const content = companyProfile[textBlock.field as keyof CompanyProfile] as string
-          if (!content) continue
+
+          // テキスト内容を取得（手数料フィールドは特別処理）
+          let content: string
+          if (textBlock.field.startsWith('fee_')) {
+            const value = companyProfile[textBlock.field as keyof CompanyProfile] as number | null
+            if (value === null || value === undefined) continue
+            content = `${FEE_LABELS[textBlock.field] || textBlock.field}: ${value}%`
+          } else {
+            content = companyProfile[textBlock.field as keyof CompanyProfile] as string
+            if (!content) continue
+          }
 
           const font = textBlock.fontWeight === 'bold' ? japaneseFontBold : japaneseFont
           const fontSize = textBlock.fontSize * scaleRatio
@@ -421,8 +526,8 @@ export function PreviewEditor({
           } else if (textBlock.textAlign === 'right') {
             blockX += blockWidthPdf - textWidthPx
           }
-          const blockY = textBlock.y * scaleRatio  // ブロックの上端
-          const baselineY = (textBlock.y + textBlock.height - 2) * scaleRatio  // ベースライン（少し上げる）
+          const blockY = textBlock.y * scaleRatio
+          const baselineY = (textBlock.y + textBlock.height - 2) * scaleRatio
 
           // 回転に応じてPDF座標に変換
           let pdfTextX: number, pdfTextY: number
@@ -430,29 +535,21 @@ export function PreviewEditor({
 
           switch (rotation) {
             case 90:
-              // 90度反時計回り: 元の左端が表示の下端
-              // 表示(dx, dy) → PDF(rawWidth - dy, dx) を逆算
               pdfTextX = baselineY
               pdfTextY = rawHeight - blockX - textWidthPx
               textRotation = -90
               break
             case 180:
-              // 180度回転
               pdfTextX = displayWidth - blockX - textWidthPx
               pdfTextY = baselineY
               textRotation = 180
               break
             case 270:
-              // 270度反時計回り: 元の右端が表示の下端
-              // 表示座標(blockX, baselineY)を、回転前のPDF座標に変換
-              // 表示の下部 = 元のPDFの右側
-              // 表示の左側 = 元のPDFの下側
               pdfTextX = rawWidth - baselineY
               pdfTextY = blockX
               textRotation = -90
               break
             default:
-              // 回転なし
               pdfTextX = blockX
               pdfTextY = displayHeight - baselineY
               textRotation = 0
@@ -462,8 +559,6 @@ export function PreviewEditor({
             rotation,
             block: { x: blockX, y: blockY, baselineY },
             pdf: { x: pdfTextX, y: pdfTextY },
-            dims: { w: dims.width, h: dims.height || displayHeight },
-            raw: { w: rawWidth, h: rawHeight },
             textRotation,
           })
 
@@ -485,7 +580,7 @@ export function PreviewEditor({
       await downloadFile(new Uint8Array(pdfBytes), fileName)
       toast.success(`${pages.length}ページのPDFをダウンロードしました`)
 
-      // Notionにログを記録（fire-and-forget: 失敗してもPDF出力には影響しない）
+      // Notionにログを記録（fire-and-forget）
       const firstFileName = pages[0]?.fileName || '不明'
       fetch('/api/log-export', {
         method: 'POST',
@@ -633,6 +728,8 @@ export function PreviewEditor({
                 <p><strong>住所:</strong> {companyProfile.address}</p>
                 <p><strong>電話:</strong> {companyProfile.phone}</p>
                 <p><strong>免許:</strong> {companyProfile.license_number}</p>
+                {companyProfile.logo_url && <p><strong>ロゴ:</strong> 登録済み</p>}
+                {companyProfile.line_qr_url && <p><strong>LINE QR:</strong> 登録済み</p>}
               </CardContent>
             </Card>
           )}

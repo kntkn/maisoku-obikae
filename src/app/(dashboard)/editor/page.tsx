@@ -204,6 +204,13 @@ export default function EditorPage() {
     }
   }, [selectedPageId, pages])
 
+  const handleConfirmAll = useCallback(() => {
+    setPages((prev) =>
+      prev.map((page) => ({ ...page, status: 'done' as const }))
+    )
+    toast.success(`${pages.length}ページを一括確定しました`)
+  }, [pages.length])
+
   const handleSelectPage = useCallback((id: string) => {
     setSelectedPageId(id)
     setPages((prev) =>
@@ -372,6 +379,15 @@ export default function EditorPage() {
                         className="w-full"
                       >
                         編集し直す
+                      </Button>
+                    )}
+                    {pages.length > 1 && !allCompleted && (
+                      <Button
+                        variant="secondary"
+                        onClick={handleConfirmAll}
+                        className="w-full"
+                      >
+                        全ページをまとめて確定
                       </Button>
                     )}
                   </CardContent>

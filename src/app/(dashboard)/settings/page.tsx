@@ -21,9 +21,15 @@ export default function SettingsPage() {
     email: '',
     contact_person: '',
     license_number: '',
+    fee_ratio_landlord: null,
+    fee_ratio_tenant: null,
+    fee_distribution_motoduke: null,
+    fee_distribution_kyakuzuke: null,
   })
   const [logoFile, setLogoFile] = useState<File | null>(null)
   const [logoPreview, setLogoPreview] = useState<string | null>(null)
+  const [lineQrFile, setLineQrFile] = useState<File | null>(null)
+  const [lineQrPreview, setLineQrPreview] = useState<string | null>(null)
 
   const supabase = createClient()
 
@@ -52,6 +58,9 @@ export default function SettingsPage() {
         if (data.logo_url) {
           setLogoPreview(data.logo_url)
         }
+        if (data.line_qr_url) {
+          setLineQrPreview(data.line_qr_url)
+        }
       }
     } catch (error) {
       console.error('Error:', error)
@@ -67,6 +76,18 @@ export default function SettingsPage() {
       const reader = new FileReader()
       reader.onloadend = () => {
         setLogoPreview(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const handleLineQrChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      setLineQrFile(file)
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setLineQrPreview(reader.result as string)
       }
       reader.readAsDataURL(file)
     }
@@ -94,6 +115,46 @@ export default function SettingsPage() {
     return publicUrl
   }
 
+  const uploadLineQr = async (userId: string): Promise<string | null> => {
+    if (!lineQrFile) return profile.line_qr_url || null
+
+    const fileExt = lineQrFile.name.split('.').pop()
+    const fileName = `${userId}/line-qr.${fileExt}`
+
+    const { error: uploadError } = await supabase.storage
+      .from('logos')
+      .upload(fileName, lineQrFile, { upsert: true })
+
+    if (uploadError) {
+      console.error('LINE QR upload error:', uploadError)
+      return profile.line_qr_url || null
+    }
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('logos')
+      .getPublicUrl(fileName)
+
+    return publicUrl
+  }
+
+  const handleFeeChange = (field: 'fee_ratio_landlord' | 'fee_distribution_motoduke', value: string) => {
+    const numValue = value === '' ? null : Math.min(100, Math.max(0, parseInt(value) || 0))
+
+    if (field === 'fee_ratio_landlord') {
+      setProfile({
+        ...profile,
+        fee_ratio_landlord: numValue,
+        fee_ratio_tenant: numValue !== null ? 100 - numValue : null,
+      })
+    } else {
+      setProfile({
+        ...profile,
+        fee_distribution_motoduke: numValue,
+        fee_distribution_kyakuzuke: numValue !== null ? 100 - numValue : null,
+      })
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSaving(true)
@@ -106,6 +167,7 @@ export default function SettingsPage() {
       }
 
       const logoUrl = await uploadLogo(user.id)
+      const lineQrUrl = await uploadLineQr(user.id)
 
       const profileData = {
         user_id: user.id,
@@ -117,6 +179,11 @@ export default function SettingsPage() {
         contact_person: profile.contact_person || null,
         license_number: profile.license_number || '',
         logo_url: logoUrl,
+        line_qr_url: lineQrUrl,
+        fee_ratio_landlord: profile.fee_ratio_landlord ?? null,
+        fee_ratio_tenant: profile.fee_ratio_tenant ?? null,
+        fee_distribution_motoduke: profile.fee_distribution_motoduke ?? null,
+        fee_distribution_kyakuzuke: profile.fee_distribution_kyakuzuke ?? null,
       }
 
       const { data: existing } = await supabase
@@ -277,6 +344,110 @@ export default function SettingsPage() {
                   />
                 </div>
               )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="line_qr">公式LINE QRコード</Label>
+              <Input
+                id="line_qr"
+                type="file"
+                accept="image/*"
+                onChange={handleLineQrChange}
+              />
+              <p className="text-xs text-muted-foreground">
+                アップロードすると帯の右端にQRコードが表示されます
+              </p>
+              {lineQrPreview && (
+                <div className="mt-2">
+                  <img
+                    src={lineQrPreview}
+                    alt="LINE QRプレビュー"
+                    className="max-h-24 object-contain border rounded p-2"
+                  />
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>手数料設定</CardTitle>
+            <CardDescription>
+              帯に表示する手数料情報を設定します（任意）
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-4">
+              <h4 className="text-sm font-medium">手数料負担割合</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="fee_ratio_landlord">貸主負担</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="fee_ratio_landlord"
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={profile.fee_ratio_landlord ?? ''}
+                      onChange={(e) => handleFeeChange('fee_ratio_landlord', e.target.value)}
+                      placeholder="50"
+                      className="w-24"
+                    />
+                    <span className="text-sm text-muted-foreground">%</span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="fee_ratio_tenant">借主負担</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="fee_ratio_tenant"
+                      type="number"
+                      value={profile.fee_ratio_tenant ?? ''}
+                      disabled
+                      className="w-24 bg-muted"
+                    />
+                    <span className="text-sm text-muted-foreground">%（自動計算）</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-4">
+              <h4 className="text-sm font-medium">手数料配分</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="fee_distribution_motoduke">元付配分</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="fee_distribution_motoduke"
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={profile.fee_distribution_motoduke ?? ''}
+                      onChange={(e) => handleFeeChange('fee_distribution_motoduke', e.target.value)}
+                      placeholder="50"
+                      className="w-24"
+                    />
+                    <span className="text-sm text-muted-foreground">%</span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="fee_distribution_kyakuzuke">客付配分</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="fee_distribution_kyakuzuke"
+                      type="number"
+                      value={profile.fee_distribution_kyakuzuke ?? ''}
+                      disabled
+                      className="w-24 bg-muted"
+                    />
+                    <span className="text-sm text-muted-foreground">%（自動計算）</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
