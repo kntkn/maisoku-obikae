@@ -46,15 +46,13 @@ export function PreviewEditor({
   userEmail,
   onBack,
 }: PreviewEditorProps) {
-  const [currentPageIndex, setCurrentPageIndex] = useState(0)
-  const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
   const [pageDimensions, setPageDimensions] = useState<{ [pageId: string]: { width: number; height: number } }>({})
+  const [pageScales, setPageScales] = useState<{ [pageId: string]: number }>({})
+  const [originalPageSizes, setOriginalPageSizes] = useState<{ [pageId: string]: { width: number; height: number } }>({})
   const [blocks, setBlocks] = useState<{ [pageId: string]: Block[] }>({})
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
   const [isReady, setIsReady] = useState(false)
-  const [scale, setScale] = useState(1.0)
-  const [originalPageSize, setOriginalPageSize] = useState({ width: 0, height: 0 })
   const containerRef = useRef<HTMLDivElement>(null)
   const [maxWidth, setMaxWidth] = useState(0)
 
@@ -81,93 +79,115 @@ export function PreviewEditor({
     return () => window.removeEventListener('resize', updateWidth)
   }, [])
 
-  const currentPage = pages[currentPageIndex]
-  const currentMask = currentPage ? maskSettings[currentPage.id] : null
-  const currentBlocks = currentPage ? blocks[currentPage.id] || [] : []
-
-  // fileオブジェクトをメモ化して無限レンダリングを防止
-  const file = useMemo(
-    () => currentPage ? { data: currentPage.pdfData.slice() } : null,
-    [currentPage?.id, currentPage?.pdfData]
+  // 各ページのfileオブジェクトをメモ化
+  const pageFiles = useMemo(
+    () => pages.reduce((acc, page) => {
+      acc[page.id] = { data: page.pdfData.slice() }
+      return acc
+    }, {} as { [pageId: string]: { data: Uint8Array } }),
+    [pages]
   )
 
-  const onPageLoadSuccess = useCallback(
-    (page: { width: number; height: number }) => {
-      if (!currentPage || !currentMask) return
+  // ページごとのロード成功ハンドラを生成
+  const createPageLoadHandler = useCallback(
+    (pageId: string, mask: MaskSettings) => (pageInfo: { width: number; height: number }) => {
+      const currentScale = pageScales[pageId] || 1.0
+      const origWidth = pageInfo.width / currentScale
+      const origHeight = pageInfo.height / currentScale
 
-      // page.width/heightは既にscale適用済み
-      const origWidth = page.width / scale
-      const origHeight = page.height / scale
-
-      // 最初のロードで元のサイズを保存
-      if (originalPageSize.width === 0) {
-        setOriginalPageSize({ width: origWidth, height: origHeight })
+      // 元のサイズを保存（まだ保存されていない場合）
+      if (!originalPageSizes[pageId]) {
+        setOriginalPageSizes((prev) => ({
+          ...prev,
+          [pageId]: { width: origWidth, height: origHeight }
+        }))
 
         // maxWidthに基づいて適切なスケールを計算
         if (maxWidth > 0 && origWidth > maxWidth) {
           const newScale = maxWidth / origWidth
-          setScale(newScale)
+          setPageScales((prev) => ({ ...prev, [pageId]: newScale }))
           return // 新しいスケールで再レンダリングされる
         }
       }
 
-      setDimensions({ width: page.width, height: page.height })
       setPageDimensions((prev) => ({
         ...prev,
-        [currentPage.id]: { width: page.width, height: page.height }
+        [pageId]: { width: pageInfo.width, height: pageInfo.height }
       }))
 
-      // 初期ブロックがなければ生成（スケールを適用した値で計算）
+      // 初期ブロックがなければ生成
       setBlocks((prev) => {
-        if (prev[currentPage.id]) return prev
+        if (prev[pageId]) return prev
+        const scale = pageScales[pageId] || 1.0
         const initialBlocks = createInitialBlocks(
-          page.width,
-          page.height,
-          currentMask.bottomHeight * scale,
-          currentMask.leftWidth * scale,
-          currentMask.enableLShape,
+          pageInfo.width,
+          pageInfo.height,
+          mask.bottomHeight * scale,
+          mask.leftWidth * scale,
+          mask.enableLShape,
           companyProfile
         )
-        return { ...prev, [currentPage.id]: initialBlocks }
+        return { ...prev, [pageId]: initialBlocks }
       })
     },
-    [currentPage?.id, currentMask, scale, originalPageSize.width, maxWidth, companyProfile]
+    [pageScales, originalPageSizes, maxWidth, companyProfile]
   )
 
-  const handleBlocksChange = useCallback(
-    (newBlocks: Block[]) => {
-      if (!currentPage) return
-      setBlocks((prev) => ({ ...prev, [currentPage.id]: newBlocks }))
+  // ページごとのブロック変更ハンドラを生成
+  const createBlocksChangeHandler = useCallback(
+    (pageId: string) => (newBlocks: Block[]) => {
+      setBlocks((prev) => ({ ...prev, [pageId]: newBlocks }))
     },
-    [currentPage]
+    []
   )
 
+  // 選択中ブロックの更新（全ページから検索）
   const handleBlockUpdate = useCallback(
     (updatedBlock: Block) => {
-      if (!currentPage) return
-      setBlocks((prev) => ({
-        ...prev,
-        [currentPage.id]: (prev[currentPage.id] || []).map((b) =>
-          b.id === updatedBlock.id ? updatedBlock : b
-        ),
-      }))
+      // どのページに属するブロックか検索
+      for (const pageId of Object.keys(blocks)) {
+        const pageBlocks = blocks[pageId]
+        if (pageBlocks?.some((b) => b.id === updatedBlock.id)) {
+          setBlocks((prev) => ({
+            ...prev,
+            [pageId]: (prev[pageId] || []).map((b) =>
+              b.id === updatedBlock.id ? updatedBlock : b
+            ),
+          }))
+          return
+        }
+      }
     },
-    [currentPage]
+    [blocks]
   )
 
+  // 選択中ブロックの削除（全ページから検索）
   const handleBlockDelete = useCallback(
     (id: string) => {
-      if (!currentPage) return
-      setBlocks((prev) => ({
-        ...prev,
-        [currentPage.id]: (prev[currentPage.id] || []).filter((b) => b.id !== id),
-      }))
-      setSelectedBlockId(null)
+      for (const pageId of Object.keys(blocks)) {
+        const pageBlocks = blocks[pageId]
+        if (pageBlocks?.some((b) => b.id === id)) {
+          setBlocks((prev) => ({
+            ...prev,
+            [pageId]: (prev[pageId] || []).filter((b) => b.id !== id),
+          }))
+          setSelectedBlockId(null)
+          return
+        }
+      }
     },
-    [currentPage]
+    [blocks]
   )
 
-  const selectedBlock = currentBlocks.find((b) => b.id === selectedBlockId) || null
+  // 選択中ブロックを全ページから検索
+  const selectedBlock = useMemo(() => {
+    if (!selectedBlockId) return null
+    for (const pageId of Object.keys(blocks)) {
+      const found = blocks[pageId]?.find((b) => b.id === selectedBlockId)
+      if (found) return found
+    }
+    return null
+  }, [selectedBlockId, blocks])
 
   // ファイルをダウンロード（Safari対応のBlob方式）
   const downloadFile = async (pdfBytes: Uint8Array, fileName: string): Promise<void> => {
@@ -622,92 +642,90 @@ export function PreviewEditor({
         </div>
       </div>
 
-      {pages.length > 1 && (
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setCurrentPageIndex((i) => Math.max(0, i - 1))}
-            disabled={currentPageIndex === 0}
-          >
-            前へ
-          </Button>
-          <span className="text-sm">
-            {currentPageIndex + 1} / {pages.length}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setCurrentPageIndex((i) => Math.min(pages.length - 1, i + 1))}
-            disabled={currentPageIndex === pages.length - 1}
-          >
-            次へ
-          </Button>
-        </div>
-      )}
-
       <div className="grid grid-cols-12 gap-4">
-        <div className="col-span-9" ref={containerRef}>
-          <div className="relative inline-block border rounded-lg overflow-hidden shadow-lg">
-            {currentPage && isReady && file && maxWidth > 0 ? (
-              <Document
-                file={file}
-                loading={<div className="p-8 text-gray-500">PDFを読み込み中...</div>}
-                error={<div className="p-8 text-red-500">PDFの読み込みに失敗しました</div>}
-              >
-                <Page
-                  pageNumber={currentPage.pageNumber}
-                  scale={scale}
-                  onLoadSuccess={onPageLoadSuccess}
-                  renderTextLayer={false}
-                  renderAnnotationLayer={false}
-                />
-              </Document>
-            ) : (
-              <div className="p-8 text-gray-500">PDFライブラリを準備中...</div>
-            )}
+        <div className="col-span-9 overflow-y-auto max-h-[80vh]" ref={containerRef}>
+          <div className="space-y-6">
+            {pages.map((page, index) => {
+              const mask = maskSettings[page.id]
+              const dims = pageDimensions[page.id]
+              const pageBlocks = blocks[page.id] || []
+              const scale = pageScales[page.id] || 1.0
+              const file = pageFiles[page.id]
 
-            {dimensions.width > 0 && currentMask && (
-              <div
-                className="absolute top-0 left-0 pointer-events-none"
-                style={{ width: dimensions.width, height: dimensions.height }}
-              >
-                {currentMask.bottomHeight > 0 && (
-                  <div
-                    className="absolute left-0 right-0 bg-white"
-                    style={{
-                      bottom: 0,
-                      height: currentMask.bottomHeight * scale,
-                    }}
-                  />
-                )}
+              if (!mask) return null
 
-                {currentMask.enableLShape && currentMask.leftWidth > 0 && (
-                  <div
-                    className="absolute top-0 left-0 bg-white"
-                    style={{
-                      width: currentMask.leftWidth * scale,
-                      height: dimensions.height - currentMask.bottomHeight * scale,
-                    }}
-                  />
-                )}
-              </div>
-            )}
+              return (
+                <div key={page.id}>
+                  {/* ページラベル */}
+                  <div className="text-sm text-muted-foreground mb-2">
+                    {index + 1} / {pages.length} - {page.fileName}
+                  </div>
 
-            {dimensions.width > 0 && currentMask && (
-              <BlockEditor
-                canvasWidth={dimensions.width}
-                canvasHeight={dimensions.height}
-                maskBottomHeight={currentMask.bottomHeight * scale}
-                maskLeftWidth={currentMask.leftWidth * scale}
-                enableLShape={currentMask.enableLShape}
-                companyProfile={companyProfile}
-                blocks={currentBlocks}
-                onBlocksChange={handleBlocksChange}
-                selectedBlockId={selectedBlockId}
-                onSelectBlock={setSelectedBlockId}
-              />
-            )}
+                  {/* PDFプレビュー + BlockEditor */}
+                  <div className="relative inline-block border rounded-lg overflow-hidden shadow-lg">
+                    {isReady && file && maxWidth > 0 ? (
+                      <Document
+                        file={file}
+                        loading={<div className="p-8 text-gray-500">PDFを読み込み中...</div>}
+                        error={<div className="p-8 text-red-500">PDFの読み込みに失敗しました</div>}
+                      >
+                        <Page
+                          pageNumber={page.pageNumber}
+                          scale={scale}
+                          onLoadSuccess={createPageLoadHandler(page.id, mask)}
+                          renderTextLayer={false}
+                          renderAnnotationLayer={false}
+                        />
+                      </Document>
+                    ) : (
+                      <div className="p-8 text-gray-500">PDFライブラリを準備中...</div>
+                    )}
+
+                    {dims && dims.width > 0 && (
+                      <div
+                        className="absolute top-0 left-0 pointer-events-none"
+                        style={{ width: dims.width, height: dims.height }}
+                      >
+                        {mask.bottomHeight > 0 && (
+                          <div
+                            className="absolute left-0 right-0 bg-white"
+                            style={{
+                              bottom: 0,
+                              height: mask.bottomHeight * scale,
+                            }}
+                          />
+                        )}
+
+                        {mask.enableLShape && mask.leftWidth > 0 && (
+                          <div
+                            className="absolute top-0 left-0 bg-white"
+                            style={{
+                              width: mask.leftWidth * scale,
+                              height: dims.height - mask.bottomHeight * scale,
+                            }}
+                          />
+                        )}
+                      </div>
+                    )}
+
+                    {dims && dims.width > 0 && (
+                      <BlockEditor
+                        canvasWidth={dims.width}
+                        canvasHeight={dims.height}
+                        maskBottomHeight={mask.bottomHeight * scale}
+                        maskLeftWidth={mask.leftWidth * scale}
+                        enableLShape={mask.enableLShape}
+                        companyProfile={companyProfile}
+                        blocks={pageBlocks}
+                        onBlocksChange={createBlocksChangeHandler(page.id)}
+                        selectedBlockId={selectedBlockId}
+                        onSelectBlock={setSelectedBlockId}
+                      />
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
 
