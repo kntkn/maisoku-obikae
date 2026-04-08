@@ -36,6 +36,11 @@ function toSlug(text: string): string {
     || 'listing'
 }
 
+interface PublishedItem {
+  title: string
+  url: string
+}
+
 export function PublishDialog({
   open,
   onOpenChange,
@@ -45,9 +50,8 @@ export function PublishDialog({
   const [step, setStep] = useState<PublishStep>('form')
   const [title, setTitle] = useState(defaultTitle)
   const [progress, setProgress] = useState('')
-  const [publicUrl, setPublicUrl] = useState('')
+  const [publishedItems, setPublishedItems] = useState<PublishedItem[]>([])
 
-  // All listings use the same GA4 property
   const GA_MEASUREMENT_ID = 'G-7D0S0CS7MJ'
 
   const handlePublish = async () => {
@@ -66,38 +70,41 @@ export function PublishDialog({
       setProgress('画像変換中...')
       const images = await renderPdfToImages(pdfBytes)
 
-      // Step 3: Create listing record
-      setProgress('データ保存中...')
-      const listingSlug = `${toSlug(title)}-${Date.now().toString(36)}`
-
-      const { data: listing, error: listingError } = await supabase
-        .from('published_listings')
-        .insert({
-          user_id: user.id,
-          title,
-          slug: listingSlug,
-          page_count: images.length,
-          ga_measurement_id: GA_MEASUREMENT_ID,
-        })
-        .select()
-        .single()
-
-      if (listingError || !listing) throw new Error(listingError?.message || 'リスト作成に失敗しました')
-
-      // Step 4: Upload images to Supabase Storage
-      setProgress(`画像アップロード中... (0/${images.length})`)
-
-      const pageRecords = []
+      // Step 3: Create one listing per page (1 property = 1 URL)
+      const items: PublishedItem[] = []
+      const baseSlug = toSlug(title)
+      const timestamp = Date.now().toString(36)
 
       for (const img of images) {
-        const filePath = `${user.id}/${listing.id}/${img.pageNumber}.png`
+        const itemTitle = images.length > 1
+          ? `${title} (${img.pageNumber}/${images.length})`
+          : title
+        const listingSlug = images.length > 1
+          ? `${baseSlug}-${img.pageNumber}-${timestamp}`
+          : `${baseSlug}-${timestamp}`
 
+        setProgress(`物件 ${img.pageNumber}/${images.length} を公開中...`)
+
+        // Create listing
+        const { data: listing, error: listingError } = await supabase
+          .from('published_listings')
+          .insert({
+            user_id: user.id,
+            title: itemTitle,
+            slug: listingSlug,
+            page_count: 1,
+            ga_measurement_id: GA_MEASUREMENT_ID,
+          })
+          .select()
+          .single()
+
+        if (listingError || !listing) throw new Error(listingError?.message || 'リスト作成に失敗')
+
+        // Upload image
+        const filePath = `${user.id}/${listing.id}/1.png`
         const { error: uploadError } = await supabase.storage
           .from('published')
-          .upload(filePath, img.blob, {
-            contentType: 'image/png',
-            upsert: true,
-          })
+          .upload(filePath, img.blob, { contentType: 'image/png', upsert: true })
 
         if (uploadError) throw new Error(`画像アップロード失敗: ${uploadError.message}`)
 
@@ -105,30 +112,28 @@ export function PublishDialog({
           .from('published')
           .getPublicUrl(filePath)
 
-        pageRecords.push({
-          listing_id: listing.id,
-          page_number: img.pageNumber,
-          image_url: imageUrl,
-          width: img.width,
-          height: img.height,
-        })
+        // Save page record
+        const { error: pageError } = await supabase
+          .from('published_pages')
+          .insert({
+            listing_id: listing.id,
+            page_number: 1,
+            image_url: imageUrl,
+            width: img.width,
+            height: img.height,
+          })
 
-        setProgress(`画像アップロード中... (${img.pageNumber}/${images.length})`)
+        if (pageError) throw new Error(`ページ保存失敗: ${pageError.message}`)
+
+        items.push({
+          title: itemTitle,
+          url: `${window.location.origin}/p/${listingSlug}`,
+        })
       }
 
-      // Step 5: Save page records
-      setProgress('ページ情報を保存中...')
-      const { error: pagesError } = await supabase
-        .from('published_pages')
-        .insert(pageRecords)
-
-      if (pagesError) throw new Error(`ページ保存失敗: ${pagesError.message}`)
-
-      // Done
-      const url = `${window.location.origin}/p/${listingSlug}`
-      setPublicUrl(url)
+      setPublishedItems(items)
       setStep('done')
-      toast.success('Web公開が完了しました')
+      toast.success(`${items.length}件の物件を公開しました`)
     } catch (error) {
       console.error('Publish error:', error)
       toast.error('公開に失敗しました: ' + (error instanceof Error ? error.message : '不明なエラー'))
@@ -136,8 +141,14 @@ export function PublishDialog({
     }
   }
 
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(publicUrl)
+  const handleCopyAll = async () => {
+    const text = publishedItems.map(item => `${item.title}\n${item.url}`).join('\n\n')
+    await navigator.clipboard.writeText(text)
+    toast.success('全URLをコピーしました')
+  }
+
+  const handleCopyOne = async (url: string) => {
+    await navigator.clipboard.writeText(url)
     toast.success('URLをコピーしました')
   }
 
@@ -146,21 +157,21 @@ export function PublishDialog({
       setStep('form')
       setTitle(defaultTitle)
       setProgress('')
-      setPublicUrl('')
+      setPublishedItems([])
       onOpenChange(false)
     }
   }
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent>
+      <DialogContent className={step === 'done' ? 'max-w-2xl' : ''}>
         <DialogHeader>
           <DialogTitle>
             {step === 'done' ? '公開完了' : 'マイソクをWebに公開'}
           </DialogTitle>
           {step === 'form' && (
             <DialogDescription>
-              帯替え済みマイソクをWebページとして公開します
+              各ページを個別のWebページとして公開します（{pdfParams.pages.length}物件）
             </DialogDescription>
           )}
         </DialogHeader>
@@ -169,13 +180,16 @@ export function PublishDialog({
           <>
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="title">タイトル</Label>
+                <Label htmlFor="title">タイトル（ベース名）</Label>
                 <Input
                   id="title"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="物件名やファイル名"
                 />
+                <p className="text-xs text-muted-foreground">
+                  {pdfParams.pages.length}件の物件ページが個別に公開されます
+                </p>
               </div>
             </div>
             <DialogFooter>
@@ -183,7 +197,7 @@ export function PublishDialog({
                 キャンセル
               </Button>
               <Button onClick={handlePublish} disabled={!title.trim()}>
-                公開する
+                {pdfParams.pages.length}件を公開する
               </Button>
             </DialogFooter>
           </>
@@ -199,23 +213,37 @@ export function PublishDialog({
         {step === 'done' && (
           <>
             <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                公開URLが発行されました。このURLを共有してください。
-              </p>
-              <div className="flex items-center gap-2">
-                <Input value={publicUrl} readOnly className="text-xs" />
-                <Button variant="outline" size="sm" onClick={handleCopy}>
-                  コピー
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  {publishedItems.length}件の物件ページを公開しました
+                </p>
+                <Button variant="outline" size="sm" onClick={handleCopyAll}>
+                  全URLコピー
                 </Button>
               </div>
-              <a
-                href={publicUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-blue-600 hover:underline"
-              >
-                公開ページを開く
-              </a>
+              <div className="max-h-[400px] overflow-y-auto space-y-2">
+                {publishedItems.map((item, i) => (
+                  <div key={i} className="flex items-center gap-2 p-2 bg-gray-50 rounded text-sm">
+                    <span className="text-gray-500 w-6 text-right flex-shrink-0">{i + 1}.</span>
+                    <a
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:underline truncate flex-1"
+                    >
+                      {item.url}
+                    </a>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="flex-shrink-0 h-7 px-2"
+                      onClick={() => handleCopyOne(item.url)}
+                    >
+                      コピー
+                    </Button>
+                  </div>
+                ))}
+              </div>
             </div>
             <DialogFooter>
               <Button onClick={handleClose}>閉じる</Button>
