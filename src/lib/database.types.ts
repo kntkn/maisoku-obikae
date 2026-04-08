@@ -26,6 +26,8 @@ export interface Database {
           fee_ratio_tenant: number | null
           fee_distribution_motoduke: number | null
           fee_distribution_kyakuzuke: number | null
+          slug: string | null
+          ga_measurement_id: string | null
           created_at: string
           updated_at: string
         }
@@ -45,6 +47,8 @@ export interface Database {
           fee_ratio_tenant?: number | null
           fee_distribution_motoduke?: number | null
           fee_distribution_kyakuzuke?: number | null
+          slug?: string | null
+          ga_measurement_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -64,6 +68,8 @@ export interface Database {
           fee_ratio_tenant?: number | null
           fee_distribution_motoduke?: number | null
           fee_distribution_kyakuzuke?: number | null
+          slug?: string | null
+          ga_measurement_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -92,6 +98,67 @@ export interface Database {
           blocks?: Json
           created_at?: string
           updated_at?: string
+        }
+      }
+      published_listings: {
+        Row: {
+          id: string
+          user_id: string
+          title: string
+          slug: string
+          page_count: number
+          is_published: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          title: string
+          slug: string
+          page_count: number
+          is_published?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          title?: string
+          slug?: string
+          page_count?: number
+          is_published?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      published_pages: {
+        Row: {
+          id: string
+          listing_id: string
+          page_number: number
+          image_url: string
+          width: number | null
+          height: number | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          listing_id: string
+          page_number: number
+          image_url: string
+          width?: number | null
+          height?: number | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          listing_id?: string
+          page_number?: number
+          image_url?: string
+          width?: number | null
+          height?: number | null
+          created_at?: string
         }
       }
     }
@@ -141,3 +208,8 @@ export interface ImageBlock {
 }
 
 export type Block = TextBlock | ImageBlock
+
+export type PublishedListing = Database['public']['Tables']['published_listings']['Row']
+export type PublishedListingInsert = Database['public']['Tables']['published_listings']['Insert']
+export type PublishedPage = Database['public']['Tables']['published_pages']['Row']
+export type PublishedPageInsert = Database['public']['Tables']['published_pages']['Insert']

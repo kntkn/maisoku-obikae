@@ -25,6 +25,8 @@ export default function SettingsPage() {
     fee_ratio_tenant: null,
     fee_distribution_motoduke: null,
     fee_distribution_kyakuzuke: null,
+    slug: null,
+    ga_measurement_id: null,
   })
   const [logoFile, setLogoFile] = useState<File | null>(null)
   const [logoPreview, setLogoPreview] = useState<string | null>(null)
@@ -184,6 +186,8 @@ export default function SettingsPage() {
         fee_ratio_tenant: profile.fee_ratio_tenant ?? null,
         fee_distribution_motoduke: profile.fee_distribution_motoduke ?? null,
         fee_distribution_kyakuzuke: profile.fee_distribution_kyakuzuke ?? null,
+        slug: profile.slug || null,
+        ga_measurement_id: profile.ga_measurement_id || null,
       }
 
       const { data: existing } = await supabase
@@ -448,6 +452,45 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>Web公開設定</CardTitle>
+            <CardDescription>
+              帯替え済みマイソクをWebページとして公開する際の設定です
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="slug">公開URLスラッグ</Label>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground whitespace-nowrap">/p/</span>
+                <Input
+                  id="slug"
+                  value={profile.slug || ''}
+                  onChange={(e) => setProfile({ ...profile, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })}
+                  placeholder="my-company"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                英小文字・数字・ハイフンのみ。公開ページのURLに使われます
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="ga_measurement_id">Google Analytics Measurement ID</Label>
+              <Input
+                id="ga_measurement_id"
+                value={profile.ga_measurement_id || ''}
+                onChange={(e) => setProfile({ ...profile, ga_measurement_id: e.target.value })}
+                placeholder="G-XXXXXXXXXX"
+              />
+              <p className="text-xs text-muted-foreground">
+                設定すると公開ページにGAタグが埋め込まれます（任意）
+              </p>
             </div>
           </CardContent>
         </Card>
