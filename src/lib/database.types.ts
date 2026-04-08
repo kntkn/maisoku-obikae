@@ -108,6 +108,7 @@ export interface Database {
           slug: string
           page_count: number
           is_published: boolean
+          ga_measurement_id: string | null
           created_at: string
           updated_at: string
         }
@@ -118,6 +119,7 @@ export interface Database {
           slug: string
           page_count: number
           is_published?: boolean
+          ga_measurement_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -128,6 +130,7 @@ export interface Database {
           slug?: string
           page_count?: number
           is_published?: boolean
+          ga_measurement_id?: string | null
           created_at?: string
           updated_at?: string
         }

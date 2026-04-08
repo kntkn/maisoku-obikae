@@ -44,6 +44,7 @@ export function PublishDialog({
 }: PublishDialogProps) {
   const [step, setStep] = useState<PublishStep>('form')
   const [title, setTitle] = useState(defaultTitle)
+  const [gaId, setGaId] = useState('')
   const [progress, setProgress] = useState('')
   const [publicUrl, setPublicUrl] = useState('')
 
@@ -54,19 +55,6 @@ export function PublishDialog({
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('ログインが必要です')
-
-      // Check user has a slug set
-      const { data: profile } = await supabase
-        .from('company_profiles')
-        .select('slug')
-        .eq('user_id', user.id)
-        .single()
-
-      if (!profile?.slug) {
-        toast.error('先に設定ページで公開URLスラッグを設定してください')
-        setStep('form')
-        return
-      }
 
       // Step 1: Generate modified PDF
       setProgress('PDF生成中...')
@@ -87,6 +75,7 @@ export function PublishDialog({
           title,
           slug: listingSlug,
           page_count: images.length,
+          ga_measurement_id: gaId.trim() || null,
         })
         .select()
         .single()
@@ -134,7 +123,7 @@ export function PublishDialog({
       if (pagesError) throw new Error(`ページ保存失敗: ${pagesError.message}`)
 
       // Done
-      const url = `${window.location.origin}/p/${profile.slug}/${listingSlug}`
+      const url = `${window.location.origin}/p/${listingSlug}`
       setPublicUrl(url)
       setStep('done')
       toast.success('Web公開が完了しました')
@@ -154,6 +143,7 @@ export function PublishDialog({
     if (step !== 'publishing') {
       setStep('form')
       setTitle(defaultTitle)
+      setGaId('')
       setProgress('')
       setPublicUrl('')
       onOpenChange(false)
@@ -185,6 +175,18 @@ export function PublishDialog({
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="物件名やファイル名"
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ga-id">Google Analytics ID（任意）</Label>
+                <Input
+                  id="ga-id"
+                  value={gaId}
+                  onChange={(e) => setGaId(e.target.value)}
+                  placeholder="G-XXXXXXXXXX"
+                />
+                <p className="text-xs text-muted-foreground">
+                  この公開ページの閲覧をトラッキングします
+                </p>
               </div>
             </div>
             <DialogFooter>

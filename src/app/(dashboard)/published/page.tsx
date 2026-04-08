@@ -98,11 +98,7 @@ export default function PublishedPage() {
   }
 
   const copyUrl = async (listing: PublishedListing) => {
-    if (!userSlug) {
-      toast.error('公開URLスラッグを設定してください')
-      return
-    }
-    const url = `${window.location.origin}/p/${userSlug}/${listing.slug}`
+    const url = `${window.location.origin}/p/${listing.slug}`
     await navigator.clipboard.writeText(url)
     toast.success('URLをコピーしました')
   }
