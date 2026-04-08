@@ -29,7 +29,8 @@ export async function renderPdfToImages(
     canvas.height = viewport.height
 
     const ctx = canvas.getContext('2d')!
-    await page.render({ canvasContext: ctx, canvas, viewport } as Parameters<typeof page.render>[0]).promise
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (page.render({ canvasContext: ctx, canvas, viewport } as any).promise)
 
     const blob = await new Promise<Blob>((resolve, reject) => {
       canvas.toBlob(
