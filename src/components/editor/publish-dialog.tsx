@@ -52,7 +52,7 @@ export function PublishDialog({
   const [progress, setProgress] = useState('')
   const [publishedItems, setPublishedItems] = useState<PublishedItem[]>([])
 
-  const GA_MEASUREMENT_ID = 'G-7D0S0CS7MJ'
+  const GA_MEASUREMENT_ID = 'G-664C460Z2V'
 
   const handlePublish = async () => {
     setStep('publishing')
