@@ -164,6 +164,58 @@ export interface Database {
           created_at?: string
         }
       }
+      proposal_sets: {
+        Row: {
+          id: string
+          user_id: string
+          customer_name: string
+          slug: string
+          listing_ids: string[]
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          customer_name: string
+          slug: string
+          listing_ids: string[]
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          customer_name?: string
+          slug?: string
+          listing_ids?: string[]
+          created_at?: string
+        }
+      }
+      swipe_results: {
+        Row: {
+          id: string
+          proposal_id: string
+          listing_id: string
+          liked: boolean
+          viewed_seconds: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          proposal_id: string
+          listing_id: string
+          liked: boolean
+          viewed_seconds?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          proposal_id?: string
+          listing_id?: string
+          liked?: boolean
+          viewed_seconds?: number
+          created_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never
@@ -216,3 +268,8 @@ export type PublishedListing = Database['public']['Tables']['published_listings'
 export type PublishedListingInsert = Database['public']['Tables']['published_listings']['Insert']
 export type PublishedPage = Database['public']['Tables']['published_pages']['Row']
 export type PublishedPageInsert = Database['public']['Tables']['published_pages']['Insert']
+
+export type ProposalSet = Database['public']['Tables']['proposal_sets']['Row']
+export type ProposalSetInsert = Database['public']['Tables']['proposal_sets']['Insert']
+export type SwipeResult = Database['public']['Tables']['swipe_results']['Row']
+export type SwipeResultInsert = Database['public']['Tables']['swipe_results']['Insert']
