@@ -23,8 +23,8 @@ export async function POST(request: NextRequest) {
   // Dev: run Playwright locally
   try {
     const { chromium } = await import('playwright')
-    const { fetchMaisokuImages } = await import('@/lib/reins/runner')
-    const results = await fetchMaisokuImages(reinsIds, chromium)
+    const { fetchMaisokuPdfs } = await import('@/lib/reins/runner')
+    const results = await fetchMaisokuPdfs(reinsIds, chromium)
     return NextResponse.json({ success: true, results })
   } catch (error) {
     console.error('[reins/fetch-maisoku] Error:', error)

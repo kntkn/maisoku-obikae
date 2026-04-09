@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { PDFDocument } from 'pdf-lib'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { toast } from 'sonner'
@@ -74,7 +73,7 @@ export default function ListingsPage() {
     }
 
     setProcessing(true)
-    setProgress(`REINS画像取得中... (0/${reinsIds.length}件)`)
+    setProgress(`REINS図面取得中... (0/${reinsIds.length}件)`)
 
     try {
       const res = await fetch('/api/reins/fetch-maisoku', {
@@ -92,30 +91,23 @@ export default function ListingsPage() {
       let successCount = 0
 
       for (const result of data.results) {
-        if (result.status !== 'success' || !result.images?.length) continue
+        if (result.status !== 'success' || !result.pdfs?.length) continue
 
-        for (const imgBase64 of result.images) {
-          const imgBytes = Uint8Array.from(atob(imgBase64), (c) => c.charCodeAt(0))
-          const pdfDoc = await PDFDocument.create()
-          const image = await pdfDoc.embedJpg(imgBytes)
-          const page = pdfDoc.addPage([image.width, image.height])
-          page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height })
-          const pdfBytes = await pdfDoc.save()
-          const base64 = btoa(String.fromCharCode(...pdfBytes))
-          pdfBase64List.push(base64)
+        for (const pdfBase64 of result.pdfs) {
+          pdfBase64List.push(pdfBase64)
         }
         successCount++
-        setProgress(`REINS画像取得中... (${successCount}/${reinsIds.length}件)`)
+        setProgress(`REINS図面取得中... (${successCount}/${reinsIds.length}件)`)
       }
 
       if (pdfBase64List.length === 0) {
-        toast.error('画像の取得に失敗しました')
+        toast.error('図面の取得に失敗しました')
         return
       }
 
       // Store in sessionStorage and navigate to editor
       sessionStorage.setItem('reins-pdfs', JSON.stringify(pdfBase64List))
-      toast.success(`${pdfBase64List.length}枚のマイソクを取得しました`)
+      toast.success(`${pdfBase64List.length}件の図面を取得しました`)
       router.push('/editor?source=reins')
     } catch (error) {
       console.error('REINS fetch error:', error)

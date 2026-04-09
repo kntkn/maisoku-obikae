@@ -1,6 +1,8 @@
 /**
- * REINS runner — adapted from suumo-dashboard/skills/reins.js
- * Returns image buffers in-memory instead of writing to disk.
+ * REINS runner — downloads 図面 (maisoku) PDFs via the "図面" button
+ * in the search results page, NOT screenshots of image cards.
+ *
+ * Flow: login → number search → click "図面" button → capture PDF download
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -25,25 +27,18 @@ const SEL = {
     searchBtn: 'button:has-text("検索")',
   },
   result: {
-    detailBtn: 'button:has-text("詳細")',
-  },
-  detail: {
-    imageSectionBtn: 'button:has-text("画像・図面")',
-    imageCard: '.col-image',
-  },
-  imagePopup: {
-    clip: { x: 237, y: 141, width: 806, height: 634 },
+    zumenBtn: 'button:has-text("図面")',
   },
 }
 
 export interface FetchResult {
   reinsId: string
   status: 'success' | 'not_found' | 'error'
-  images: string[] // base64 JPEG
+  pdfs: string[] // base64 PDF data
   error?: string
 }
 
-export async function fetchMaisokuImages(
+export async function fetchMaisokuPdfs(
   reinsIds: string[],
   chromium: any,
 ): Promise<FetchResult[]> {
@@ -54,6 +49,7 @@ export async function fetchMaisokuImages(
   const browser = await chromium.launch({ headless: true })
   const context = await browser.newContext({
     viewport: { width: 1920, height: 1080 },
+    acceptDownloads: true,
   })
   const page = await context.newPage()
   const results: FetchResult[] = []
@@ -108,65 +104,69 @@ export async function fetchMaisokuImages(
         const hasResults = await page.evaluate(() => !document.body.innerText.includes('検索結果が0件'))
         if (!hasResults) {
           console.log(`${tag} ${reinsId} → not found`)
-          results.push({ reinsId, status: 'not_found', images: [] })
+          results.push({ reinsId, status: 'not_found', pdfs: [] })
           continue
         }
 
-        // Click detail
-        await page.click(SEL.result.detailBtn)
-        await page.waitForTimeout(5000)
+        // Click 図面 button and wait for new page/download
+        const pdfs: string[] = []
 
-        // Go to image section
-        await page.click(SEL.detail.imageSectionBtn)
-        await page.waitForTimeout(2000)
-
-        // Screenshot all image cards
-        const cards = await page.$$(SEL.detail.imageCard)
-        const images: string[] = []
-
-        for (let j = 0; j < cards.length; j++) {
-          try {
-            const link = await cards[j].$('a')
-            if (!link) continue
-            await link.click()
-            await page.waitForTimeout(2000)
-
-            // Dynamic clip from modal img
-            let clip: { x: number; y: number; width: number; height: number } = SEL.imagePopup.clip
-            try {
-              const modalImg = await page.$('.modal.show .modal-content img')
-              if (modalImg) {
-                const box = await modalImg.boundingBox()
-                if (box && box.width > 50 && box.height > 50) {
-                  clip = { x: box.x + 2, y: box.y + 2, width: box.width - 4, height: box.height - 4 }
-                }
-              }
-            } catch { /* use fallback clip */ }
-
-            const buffer = await page.screenshot({ type: 'jpeg', quality: 90, clip })
-            images.push(Buffer.from(buffer).toString('base64'))
-
-            // Close modal
-            const closeBtn = await page.$('.modal.show button:has-text("閉じる")')
-            if (closeBtn) {
-              await closeBtn.click()
-              await page.waitForTimeout(800)
-            }
-          } catch (err: any) {
-            console.error(`${tag} Image ${j + 1} error:`, err.message)
-            try {
-              const closeBtn = await page.$('.modal.show button:has-text("閉じる")')
-              if (closeBtn) await closeBtn.click()
-              await page.waitForTimeout(500)
-            } catch { /* ignore */ }
-          }
+        // The 図面 button may open a new tab with the PDF, or trigger a download
+        const zumenBtn = await page.$(SEL.result.zumenBtn)
+        if (!zumenBtn) {
+          console.log(`${tag} ${reinsId} → 図面 button not found`)
+          results.push({ reinsId, status: 'error', pdfs: [], error: '図面ボタンが見つかりません' })
+          continue
         }
 
-        console.log(`${tag} ${reinsId} → ${images.length} images`)
-        results.push({ reinsId, status: 'success', images })
+        // Try: new page popup (PDF viewer) or download event
+        const [newPageOrDownload] = await Promise.all([
+          Promise.race([
+            context.waitForEvent('page', { timeout: 15000 }).then((p: any) => ({ type: 'page' as const, value: p })),
+            page.waitForEvent('download', { timeout: 15000 }).then((d: any) => ({ type: 'download' as const, value: d })),
+          ]),
+          zumenBtn.click(),
+        ])
+
+        if (newPageOrDownload.type === 'page') {
+          // New tab opened with PDF
+          const newPage = newPageOrDownload.value
+          await newPage.waitForTimeout(3000)
+
+          // Try to get PDF from the page URL (direct PDF link)
+          const pdfUrl = newPage.url()
+          if (pdfUrl && (pdfUrl.includes('.pdf') || pdfUrl.includes('findBkknGzu'))) {
+            const response = await context.request.get(pdfUrl)
+            const buffer = await response.body()
+            pdfs.push(Buffer.from(buffer).toString('base64'))
+            console.log(`${tag} ${reinsId} → PDF downloaded from new tab (${buffer.length} bytes)`)
+          } else {
+            // Page might render PDF inline — take screenshot as fallback
+            const buffer = await newPage.pdf().catch(() => null)
+            if (buffer) {
+              pdfs.push(Buffer.from(buffer).toString('base64'))
+              console.log(`${tag} ${reinsId} → PDF captured via page.pdf()`)
+            } else {
+              console.log(`${tag} ${reinsId} → could not extract PDF from new tab: ${pdfUrl}`)
+            }
+          }
+          await newPage.close()
+        } else if (newPageOrDownload.type === 'download') {
+          // Direct download
+          const download = newPageOrDownload.value
+          const buffer = await download.path().then((p: string) => require('fs').readFileSync(p))
+          pdfs.push(Buffer.from(buffer).toString('base64'))
+          console.log(`${tag} ${reinsId} → PDF downloaded (${buffer.length} bytes)`)
+        }
+
+        if (pdfs.length > 0) {
+          results.push({ reinsId, status: 'success', pdfs })
+        } else {
+          results.push({ reinsId, status: 'error', pdfs: [], error: '図面PDFを取得できませんでした' })
+        }
       } catch (err: any) {
         console.error(`${tag} ${reinsId} → error:`, err.message)
-        results.push({ reinsId, status: 'error', images: [], error: err.message })
+        results.push({ reinsId, status: 'error', pdfs: [], error: err.message })
       }
 
       // Rate limit
