@@ -35,7 +35,7 @@ export function Header({ email }: HeaderProps) {
     <header className="sticky top-0 z-50 w-full border-b bg-white">
       <div className="flex h-14 items-center justify-between px-4">
         <div className="flex items-center gap-2">
-          <h1 className="text-lg font-semibold">マイソク帯替えツール</h1>
+          <h1 className="text-lg font-semibold">入稿管理ダッシュボード</h1>
         </div>
         <div className="flex items-center gap-4">
           <DropdownMenu>

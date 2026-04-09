@@ -175,6 +175,29 @@ export default function EditorPage() {
     }
   }, [pages.length, selectedPageId, pdfjsReady])
 
+  // Auto-load REINS PDFs from sessionStorage
+  useEffect(() => {
+    if (!pdfjsReady) return
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('source') !== 'reins') return
+
+    const stored = sessionStorage.getItem('reins-pdfs')
+    if (!stored) return
+
+    try {
+      const pdfDataArray: string[] = JSON.parse(stored)
+      const files = pdfDataArray.map((base64, i) => {
+        const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
+        return new File([bytes], `reins_${i + 1}.pdf`, { type: 'application/pdf' })
+      })
+      handleFilesSelected(files)
+      sessionStorage.removeItem('reins-pdfs')
+      window.history.replaceState({}, '', '/editor')
+    } catch (e) {
+      console.error('Failed to load REINS PDFs:', e)
+    }
+  }, [pdfjsReady, handleFilesSelected])
+
   const handleMaskChange = useCallback(
     (newSettings: MaskSettings) => {
       if (!selectedPageId) return
