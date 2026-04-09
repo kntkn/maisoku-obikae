@@ -44,16 +44,23 @@ export default function ListingsPage() {
   const [progress, setProgress] = useState('')
   const router = useRouter()
 
-  useEffect(() => {
+  const fetchListings = () => {
+    setLoading(true)
     fetch('/api/notion/listings')
       .then((res) => res.json())
       .then((data) => {
-        if (Array.isArray(data)) setListings(data)
-        else toast.error('物件データの取得に失敗しました')
+        if (Array.isArray(data)) {
+          setListings(data)
+          setSelectedIds(new Set())
+        } else {
+          toast.error('物件データの取得に失敗しました')
+        }
       })
       .catch(() => toast.error('通信エラー'))
       .finally(() => setLoading(false))
-  }, [])
+  }
+
+  useEffect(() => { fetchListings() }, [])
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -150,11 +157,16 @@ export default function ListingsPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">提案物件一覧</h2>
-          <p className="text-muted-foreground">
-            Notion DBの物件データを表示しています（{listings.length}件）
-          </p>
+        <div className="flex items-center gap-3">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight">提案物件一覧</h2>
+            <p className="text-muted-foreground">
+              Notion DBの物件データを表示しています（{listings.length}件）
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={fetchListings} disabled={loading}>
+            {loading ? '更新中...' : '最新版に更新'}
+          </Button>
         </div>
         {selectedIds.size > 0 && (
           <div className="flex items-center gap-3">
