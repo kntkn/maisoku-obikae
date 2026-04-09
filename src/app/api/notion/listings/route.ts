@@ -26,7 +26,7 @@ export async function GET() {
     while (hasMore) {
       const body: Record<string, unknown> = {
         page_size: 100,
-        sorts: [{ property: 'Reins ID', direction: 'descending' }],
+        sorts: [{ timestamp: 'created_time', direction: 'descending' }],
       }
       if (startCursor) body.start_cursor = startCursor
 
