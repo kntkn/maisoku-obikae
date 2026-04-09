@@ -2,10 +2,19 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { PDFDocument } from 'pdf-lib'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { toast } from 'sonner'
 import type { NotionListing } from '@/types/notion'
+
+function uint8ToBase64(bytes: Uint8Array): string {
+  let binary = ''
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i])
+  }
+  return btoa(binary)
+}
 
 const STATUS_COLORS: Record<string, string> = {
   '未処理': 'bg-gray-100 text-gray-700',
@@ -93,8 +102,20 @@ export default function ListingsPage() {
       for (const result of data.results) {
         if (result.status !== 'success' || !result.pdfs?.length) continue
 
-        for (const pdfBase64 of result.pdfs) {
-          pdfBase64List.push(pdfBase64)
+        for (const b64 of result.pdfs) {
+          if (result.source === 'screenshot') {
+            // JPEG screenshot → wrap in PDF
+            const imgBytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
+            const pdfDoc = await PDFDocument.create()
+            const image = await pdfDoc.embedJpg(imgBytes)
+            const pg = pdfDoc.addPage([image.width, image.height])
+            pg.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height })
+            const pdfBytes = await pdfDoc.save()
+            pdfBase64List.push(uint8ToBase64(pdfBytes))
+          } else {
+            // Already a PDF
+            pdfBase64List.push(b64)
+          }
         }
         successCount++
         setProgress(`REINS図面取得中... (${successCount}/${reinsIds.length}件)`)

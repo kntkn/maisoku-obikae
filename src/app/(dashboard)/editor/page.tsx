@@ -186,8 +186,14 @@ export default function EditorPage() {
 
     try {
       const pdfDataArray: string[] = JSON.parse(stored)
+      console.log(`[reins-editor] Loading ${pdfDataArray.length} PDFs from sessionStorage`)
       const files = pdfDataArray.map((base64, i) => {
-        const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
+        const binary = atob(base64)
+        const bytes = new Uint8Array(binary.length)
+        for (let j = 0; j < binary.length; j++) {
+          bytes[j] = binary.charCodeAt(j)
+        }
+        console.log(`[reins-editor] PDF ${i + 1}: ${bytes.length} bytes, header: ${Array.from(bytes.slice(0, 5)).map(b => String.fromCharCode(b)).join('')}`)
         return new File([bytes], `reins_${i + 1}.pdf`, { type: 'application/pdf' })
       })
       handleFilesSelected(files)
