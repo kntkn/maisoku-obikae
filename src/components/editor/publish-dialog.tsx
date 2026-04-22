@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -16,6 +16,13 @@ import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { generateModifiedPdf, type GeneratePdfParams } from '@/lib/pdf-generator'
 import { renderPdfToImages } from '@/lib/pdf-to-images'
+import { getPublicBaseUrl } from '@/lib/public-url'
+
+export interface ObikaeEmbedContext {
+  sessionId: string
+  customerName: string
+  parentOrigin: string
+}
 
 interface PublishDialogProps {
   open: boolean
@@ -23,6 +30,7 @@ interface PublishDialogProps {
   pdfParams: GeneratePdfParams
   defaultTitle: string
   userEmail?: string
+  embedContext?: ObikaeEmbedContext | null
 }
 
 type PublishStep = 'form' | 'publishing' | 'done'
@@ -36,9 +44,19 @@ function toSlug(text: string): string {
     || 'listing'
 }
 
+function toProposalSlug(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    || 'proposal'
+}
+
 interface PublishedItem {
   title: string
   url: string
+  listingId: string
 }
 
 export function PublishDialog({
@@ -46,11 +64,24 @@ export function PublishDialog({
   onOpenChange,
   pdfParams,
   defaultTitle,
+  embedContext,
 }: PublishDialogProps) {
   const [step, setStep] = useState<PublishStep>('form')
   const [title, setTitle] = useState(defaultTitle)
   const [progress, setProgress] = useState('')
   const [publishedItems, setPublishedItems] = useState<PublishedItem[]>([])
+  const [proposeUrl, setProposeUrl] = useState<string | null>(null)
+
+  const isEmbed = !!embedContext
+
+  // In embed mode, swap the default title to something customer-specific.
+  useEffect(() => {
+    if (isEmbed && embedContext?.customerName) {
+      setTitle(
+        `${embedContext.customerName}様向け ${new Date().toLocaleDateString('ja-JP')}`
+      )
+    }
+  }, [isEmbed, embedContext?.customerName])
 
   const GA_MEASUREMENT_ID = 'G-664C460Z2V'
 
@@ -127,11 +158,79 @@ export function PublishDialog({
 
         items.push({
           title: itemTitle,
-          url: `${window.location.origin}/p/${listingSlug}`,
+          url: `${getPublicBaseUrl()}/p/${listingSlug}`,
+          listingId: listing.id,
         })
       }
 
       setPublishedItems(items)
+
+      // In embed mode, auto-create a proposal_set bundling the published listings
+      // so that the parent window (sales-ai-mockup) can paste a single URL into chat.
+      if (isEmbed && embedContext) {
+        try {
+          setProgress('提案セットを作成中...')
+          const proposalSlug = `${toProposalSlug(embedContext.customerName)}-${Date.now().toString(36)}`
+          const { data: proposal, error: proposalError } = await supabase
+            .from('proposal_sets')
+            .insert({
+              user_id: user.id,
+              customer_name: embedContext.customerName,
+              slug: proposalSlug,
+              listing_ids: items.map((i) => i.listingId),
+            })
+            .select('id, slug')
+            .single()
+
+          if (proposalError || !proposal) {
+            throw new Error(proposalError?.message ?? '提案セットの作成に失敗しました')
+          }
+
+          const createdProposeUrl = `${getPublicBaseUrl()}/propose/${proposal.slug}`
+          setProposeUrl(createdProposeUrl)
+
+          // Mark the obikae session as completed (fire-and-forget is fine)
+          fetch(`/api/obikae/session/${embedContext.sessionId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ proposalId: proposal.id }),
+          }).catch((err) => console.error('[obikae/session PATCH] fire-and-forget failed:', err))
+
+          // Notify the opener window (sales-ai-mockup) so it can paste the URL
+          // into chat. `window.opener` is the creator for popup windows (in
+          // iframes we'd use window.parent, but this flow is popup-only).
+          try {
+            const targetOrigin =
+              embedContext.parentOrigin && embedContext.parentOrigin !== '*'
+                ? embedContext.parentOrigin
+                : '*'
+            const message = {
+              type: 'obikae:done',
+              sessionId: embedContext.sessionId,
+              proposeUrl: createdProposeUrl,
+              customerName: embedContext.customerName,
+              listings: items.map((i) => ({ title: i.title, url: i.url })),
+            }
+            // Try opener first (popup), fall back to parent (iframe).
+            if (window.opener && !window.opener.closed) {
+              window.opener.postMessage(message, targetOrigin)
+            } else if (window.parent && window.parent !== window) {
+              window.parent.postMessage(message, targetOrigin)
+            } else {
+              console.warn('[publish] no opener/parent window to notify')
+            }
+          } catch (err) {
+            console.error('[publish] postMessage failed:', err)
+          }
+        } catch (err) {
+          console.error('Proposal creation error:', err)
+          toast.error(
+            '提案セットの作成に失敗しました: ' +
+              (err instanceof Error ? err.message : '不明なエラー')
+          )
+        }
+      }
+
       setStep('done')
       toast.success(`${items.length}件の物件を公開しました`)
     } catch (error) {
@@ -152,12 +251,43 @@ export function PublishDialog({
     toast.success('URLをコピーしました')
   }
 
+  const handleCopyProposeUrl = async () => {
+    if (!proposeUrl) return
+    await navigator.clipboard.writeText(proposeUrl)
+    toast.success('提案URLをコピーしました')
+  }
+
+  const handleSendBack = () => {
+    if (!isEmbed || !embedContext || !proposeUrl) return
+    try {
+      const targetOrigin =
+        embedContext.parentOrigin && embedContext.parentOrigin !== '*'
+          ? embedContext.parentOrigin
+          : '*'
+      const message = {
+        type: 'obikae:done',
+        sessionId: embedContext.sessionId,
+        proposeUrl,
+        customerName: embedContext.customerName,
+        listings: publishedItems.map((i) => ({ title: i.title, url: i.url })),
+        closeRequested: true,
+      }
+      if (window.opener && !window.opener.closed) {
+        window.opener.postMessage(message, targetOrigin)
+      } else if (window.parent && window.parent !== window) {
+        window.parent.postMessage(message, targetOrigin)
+      }
+    } catch (err) {
+      console.error('[publish] send-back postMessage failed:', err)
+    }
+  }
+
   const handleClose = () => {
     if (step !== 'publishing') {
       setStep('form')
-      setTitle(defaultTitle)
       setProgress('')
       setPublishedItems([])
+      setProposeUrl(null)
       onOpenChange(false)
     }
   }
@@ -213,6 +343,34 @@ export function PublishDialog({
         {step === 'done' && (
           <>
             <div className="space-y-4">
+              {isEmbed && proposeUrl && (
+                <div className="rounded-lg border border-green-200 bg-green-50 p-4 space-y-2">
+                  <p className="text-sm font-medium text-green-900">
+                    ✅ 提案URLを生成しました
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={proposeUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-blue-600 hover:underline truncate flex-1"
+                    >
+                      {proposeUrl}
+                    </a>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-shrink-0"
+                      onClick={handleCopyProposeUrl}
+                    >
+                      URLコピー
+                    </Button>
+                  </div>
+                  <p className="text-xs text-green-800">
+                    営業AIのチャット欄にこのリンクが自動挿入されています。「閉じる」を押すとこの画面は閉じます。
+                  </p>
+                </div>
+              )}
               <div className="flex items-center justify-between">
                 <p className="text-sm text-muted-foreground">
                   {publishedItems.length}件の物件ページを公開しました
@@ -221,7 +379,7 @@ export function PublishDialog({
                   全URLコピー
                 </Button>
               </div>
-              <div className="max-h-[400px] overflow-y-auto space-y-2">
+              <div className="max-h-[320px] overflow-y-auto space-y-2">
                 {publishedItems.map((item, i) => (
                   <div key={i} className="flex items-center gap-2 p-2 bg-gray-50 rounded text-sm">
                     <span className="text-gray-500 w-6 text-right flex-shrink-0">{i + 1}.</span>
@@ -246,7 +404,16 @@ export function PublishDialog({
               </div>
             </div>
             <DialogFooter>
-              <Button onClick={handleClose}>閉じる</Button>
+              {isEmbed && proposeUrl ? (
+                <>
+                  <Button variant="outline" onClick={handleClose}>
+                    編集に戻る
+                  </Button>
+                  <Button onClick={handleSendBack}>営業AIに戻る</Button>
+                </>
+              ) : (
+                <Button onClick={handleClose}>閉じる</Button>
+              )}
             </DialogFooter>
           </>
         )}

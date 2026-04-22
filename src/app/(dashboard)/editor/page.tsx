@@ -34,6 +34,12 @@ type PdfjsType = {
   getDocument: (src: { data: Uint8Array }) => { promise: Promise<{ numPages: number }> }
 }
 
+export interface ObikaeEmbedContext {
+  sessionId: string
+  customerName: string
+  parentOrigin: string
+}
+
 export default function EditorPage() {
   const [step, setStep] = useState<EditorStep>('upload')
   const [pages, setPages] = useState<PageInfo[]>([])
@@ -43,6 +49,7 @@ export default function EditorPage() {
   const [userEmail, setUserEmail] = useState<string>('')
   const [loadingProfile, setLoadingProfile] = useState(true)
   const [pdfjsReady, setPdfjsReady] = useState(false)
+  const [embedContext, setEmbedContext] = useState<ObikaeEmbedContext | null>(null)
   const pdfjsRef = useRef<PdfjsType | null>(null)
   const pdfContainerRef = useRef<HTMLDivElement>(null)
   const [pdfMaxWidth, setPdfMaxWidth] = useState<number>(0)
@@ -175,32 +182,92 @@ export default function EditorPage() {
     }
   }, [pages.length, selectedPageId, pdfjsReady])
 
-  // Auto-load REINS PDFs from sessionStorage
+  // Auto-load REINS PDFs from IndexedDB (preferred) or sessionStorage (legacy).
   useEffect(() => {
     if (!pdfjsReady) return
     const params = new URLSearchParams(window.location.search)
     if (params.get('source') !== 'reins') return
 
-    const stored = sessionStorage.getItem('reins-pdfs')
-    if (!stored) return
+    const isEmbed = params.get('embed') === '1'
 
-    try {
-      const pdfDataArray: string[] = JSON.parse(stored)
-      console.log(`[reins-editor] Loading ${pdfDataArray.length} PDFs from sessionStorage`)
-      const files = pdfDataArray.map((base64, i) => {
-        const binary = atob(base64)
-        const bytes = new Uint8Array(binary.length)
-        for (let j = 0; j < binary.length; j++) {
-          bytes[j] = binary.charCodeAt(j)
+    // Pick up obikae embed context (stashed by /editor/quick) before we strip the URL
+    if (isEmbed) {
+      try {
+        const rawCtx = sessionStorage.getItem('obikae-embed-context')
+        if (rawCtx) {
+          const parsed = JSON.parse(rawCtx) as ObikaeEmbedContext
+          setEmbedContext(parsed)
         }
-        console.log(`[reins-editor] PDF ${i + 1}: ${bytes.length} bytes, header: ${Array.from(bytes.slice(0, 5)).map(b => String.fromCharCode(b)).join('')}`)
-        return new File([bytes], `reins_${i + 1}.pdf`, { type: 'application/pdf' })
+      } catch (e) {
+        console.error('[editor] Failed to parse obikae-embed-context:', e)
+      }
+    }
+
+    let cancelled = false
+
+    ;(async () => {
+      const { getPdfs, clearPdfs } = await import('@/lib/pdf-store')
+
+      // Prefer IndexedDB (can hold many MB of PDFs).
+      let pdfBytesList: Uint8Array[] | null = null
+      try {
+        pdfBytesList = await getPdfs('reins-pdfs')
+      } catch (e) {
+        console.error('[reins-editor] IndexedDB read failed:', e)
+      }
+
+      // Legacy path: base64 array stashed in sessionStorage.
+      if (!pdfBytesList) {
+        const stored = sessionStorage.getItem('reins-pdfs')
+        if (stored) {
+          try {
+            const pdfDataArray: string[] = JSON.parse(stored)
+            pdfBytesList = pdfDataArray.map((base64) => {
+              const binary = atob(base64)
+              const bytes = new Uint8Array(binary.length)
+              for (let j = 0; j < binary.length; j++) bytes[j] = binary.charCodeAt(j)
+              return bytes
+            })
+          } catch (e) {
+            console.error('[reins-editor] sessionStorage parse failed:', e)
+          }
+        }
+      }
+
+      if (!pdfBytesList || pdfBytesList.length === 0 || cancelled) return
+
+      console.log(`[reins-editor] Loading ${pdfBytesList.length} PDFs`)
+      const files = pdfBytesList.map((bytes, i) => {
+        console.log(
+          `[reins-editor] PDF ${i + 1}: ${bytes.length} bytes, header: ${Array.from(
+            bytes.slice(0, 5)
+          )
+            .map((b) => String.fromCharCode(b))
+            .join('')}`
+        )
+        // Copy into a fresh ArrayBuffer (not ArrayBufferLike) so TS accepts it
+        // as a BlobPart on the File constructor.
+        const buf = new ArrayBuffer(bytes.length)
+        new Uint8Array(buf).set(bytes)
+        return new File([buf], `reins_${i + 1}.pdf`, { type: 'application/pdf' })
       })
       handleFilesSelected(files)
+
+      // Clean up both stores.
+      try {
+        await clearPdfs('reins-pdfs')
+      } catch (e) {
+        console.warn('[reins-editor] IndexedDB clear failed:', e)
+      }
       sessionStorage.removeItem('reins-pdfs')
-      window.history.replaceState({}, '', '/editor')
-    } catch (e) {
-      console.error('Failed to load REINS PDFs:', e)
+
+      // Keep obikae-embed-context in sessionStorage so PublishDialog can read it;
+      // just strip sensitive query params from the URL.
+      window.history.replaceState({}, '', isEmbed ? '/editor?embed=1' : '/editor')
+    })()
+
+    return () => {
+      cancelled = true
     }
   }, [pdfjsReady, handleFilesSelected])
 
@@ -434,6 +501,7 @@ export default function EditorPage() {
           companyProfile={companyProfile}
           userEmail={userEmail}
           onBack={() => setStep('edit')}
+          embedContext={embedContext}
         />
       )}
     </div>

@@ -23,12 +23,19 @@ const Page = dynamic(
   { ssr: false }
 )
 
+export interface ObikaeEmbedContext {
+  sessionId: string
+  customerName: string
+  parentOrigin: string
+}
+
 interface PreviewEditorProps {
   pages: PageInfo[]
   maskSettings: { [pageId: string]: MaskSettings }
   companyProfile: CompanyProfile | null
   userEmail?: string
   onBack: () => void
+  embedContext?: ObikaeEmbedContext | null
 }
 
 
@@ -38,6 +45,7 @@ export function PreviewEditor({
   companyProfile,
   userEmail,
   onBack,
+  embedContext,
 }: PreviewEditorProps) {
   const [pageDimensions, setPageDimensions] = useState<{ [pageId: string]: { width: number; height: number } }>({})
   const [pageScales, setPageScales] = useState<{ [pageId: string]: number }>({})
@@ -283,24 +291,36 @@ export function PreviewEditor({
     }
   }
 
+  const isEmbed = !!embedContext
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold">プレビュー・配置編集</h3>
+          <h3 className="text-lg font-semibold">
+            {isEmbed ? 'プレビュー・提案リンク作成' : 'プレビュー・配置編集'}
+          </h3>
           <p className="text-sm text-muted-foreground">
-            会社情報ブロックをドラッグして配置を調整してください
+            {isEmbed
+              ? `${embedContext?.customerName}様向けの提案リンクを作成します`
+              : '会社情報ブロックをドラッグして配置を調整してください'}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={onBack}>
             戻る
           </Button>
-          <Button onClick={handleExport} disabled={exporting}>
-            {exporting ? '出力中...' : 'PDFを出力'}
-          </Button>
-          <Button variant="outline" onClick={() => setShowPublishDialog(true)} disabled={exporting}>
-            Web公開
+          {!isEmbed && (
+            <Button onClick={handleExport} disabled={exporting}>
+              {exporting ? '出力中...' : 'PDFを出力'}
+            </Button>
+          )}
+          <Button
+            variant={isEmbed ? 'default' : 'outline'}
+            onClick={() => setShowPublishDialog(true)}
+            disabled={exporting}
+          >
+            {isEmbed ? '提案リンクを作成' : 'Web公開'}
           </Button>
         </div>
       </div>
@@ -311,6 +331,7 @@ export function PreviewEditor({
         pdfParams={getPdfParams()}
         defaultTitle={pages[0]?.fileName?.replace(/\.pdf$/i, '') || '物件'}
         userEmail={userEmail}
+        embedContext={embedContext ?? null}
       />
 
       <div className="grid grid-cols-12 gap-4">

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { toast } from 'sonner'
 import type { PublishedListing } from '@/lib/database.types'
+import { getPublicBaseUrl } from '@/lib/public-url'
 
 export default function PublishedPage() {
   const [listings, setListings] = useState<PublishedListing[]>([])
@@ -98,7 +99,7 @@ export default function PublishedPage() {
   }
 
   const copyUrl = async (listing: PublishedListing) => {
-    const url = `${window.location.origin}/p/${listing.slug}`
+    const url = `${getPublicBaseUrl()}/p/${listing.slug}`
     await navigator.clipboard.writeText(url)
     toast.success('URLをコピーしました')
   }

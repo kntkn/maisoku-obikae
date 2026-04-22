@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { toast } from 'sonner'
 import Link from 'next/link'
 import type { ProposalSet, PublishedListing } from '@/lib/database.types'
+import { getPublicBaseUrl } from '@/lib/public-url'
 
 function toSlug(text: string): string {
   return text
@@ -82,7 +83,7 @@ export default function ProposalsPage() {
   }
 
   const copyUrl = async (slug: string) => {
-    await navigator.clipboard.writeText(`${window.location.origin}/propose/${slug}`)
+    await navigator.clipboard.writeText(`${getPublicBaseUrl()}/propose/${slug}`)
     toast.success('URLをコピーしました')
   }
 

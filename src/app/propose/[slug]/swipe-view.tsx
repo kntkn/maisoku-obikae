@@ -1,9 +1,7 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { SwipeCard } from '@/components/propose/swipe-card'
-import { createClient } from '@/lib/supabase/client'
 
 declare global {
   interface Window {
@@ -24,68 +22,69 @@ interface SwipeViewProps {
   items: SwipeItem[]
 }
 
-export function SwipeView({ proposalId, proposalSlug, customerName, items }: SwipeViewProps) {
+export function SwipeView({ proposalSlug, customerName, items }: SwipeViewProps) {
   const [currentIndex, setCurrentIndex] = useState(0)
-  const [done, setDone] = useState(false)
-  const viewStartTime = useRef(Date.now())
-  const router = useRouter()
-  const supabase = createClient()
+  // Track the furthest index the user has reached so we can display a
+  // "件閲覧済み" counter without writing to Supabase.
+  const [maxReached, setMaxReached] = useState(0)
+  const viewStartTime = useRef<number>(0)
 
-  const handleSwipe = useCallback(async (direction: 'like' | 'pass') => {
-    const item = items[currentIndex]
-    if (!item) return
+  useEffect(() => {
+    viewStartTime.current = Date.now()
+  }, [])
 
-    const viewedSeconds = Math.round((Date.now() - viewStartTime.current) / 1000)
+  const currentItem = items[currentIndex]
 
-    // Save to Supabase
-    await supabase.from('swipe_results').upsert({
-      proposal_id: proposalId,
-      listing_id: item.listingId,
-      liked: direction === 'like',
-      viewed_seconds: viewedSeconds,
-    }, { onConflict: 'proposal_id,listing_id' })
-
-    // GA4 custom event
-    window.gtag?.('event', 'property_swipe', {
+  // Fire analytics when currentItem changes (no setState here).
+  useEffect(() => {
+    if (!currentItem) return
+    window.gtag?.('event', 'property_viewed', {
       proposal_id: proposalSlug,
-      property_id: item.listingId,
-      property_title: item.title,
-      direction,
-      viewed_seconds: viewedSeconds,
+      property_id: currentItem.listingId,
+      property_title: currentItem.title,
+      index: currentIndex + 1,
+      total: items.length,
     })
+  }, [currentItem, currentIndex, items.length, proposalSlug])
 
-    // Next card or done
-    if (currentIndex + 1 >= items.length) {
-      setDone(true)
-    } else {
-      setCurrentIndex(prev => prev + 1)
+  const handleNavigate = useCallback(
+    (direction: 'prev' | 'next') => {
+      const item = items[currentIndex]
+      if (!item) return
+
+      const viewedSeconds = Math.round((Date.now() - viewStartTime.current) / 1000)
+      window.gtag?.('event', 'property_navigate', {
+        proposal_id: proposalSlug,
+        property_id: item.listingId,
+        direction,
+        viewed_seconds: viewedSeconds,
+      })
+
+      setCurrentIndex((prev) => {
+        const nextIdx =
+          direction === 'next'
+            ? Math.min(prev + 1, items.length - 1)
+            : Math.max(prev - 1, 0)
+        setMaxReached((m) => Math.max(m, nextIdx))
+        return nextIdx
+      })
       viewStartTime.current = Date.now()
-    }
-  }, [currentIndex, items, proposalId, proposalSlug, supabase])
+    },
+    [currentIndex, items, proposalSlug]
+  )
 
-  if (done) {
+  const canGoPrev = currentIndex > 0
+  const canGoNext = currentIndex < items.length - 1
+  const isLast = currentIndex === items.length - 1
+  const viewedCount = Math.min(items.length, maxReached + 1)
+
+  if (!currentItem) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen px-4">
-        <div className="text-center space-y-6">
-          <div className="text-6xl">🎉</div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            全{items.length}件の確認が完了しました
-          </h1>
-          <p className="text-gray-500">
-            気になった物件を振り返りましょう
-          </p>
-          <button
-            onClick={() => router.push(`/propose/${proposalSlug}/review`)}
-            className="inline-flex items-center px-6 py-3 bg-gray-900 text-white rounded-full font-medium hover:bg-gray-700 transition-colors"
-          >
-            気になる物件を見る
-          </button>
-        </div>
+      <div className="flex items-center justify-center min-h-screen px-4 text-gray-500">
+        物件が見つかりませんでした
       </div>
     )
   }
-
-  const currentItem = items[currentIndex]
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -93,23 +92,29 @@ export function SwipeView({ proposalId, proposalSlug, customerName, items }: Swi
       <header className="px-4 py-4 text-center">
         <p className="text-sm text-gray-500">{customerName}様への物件提案</p>
         <p className="text-xs text-gray-400 mt-1">
-          左にスワイプで「パス」、右にスワイプで「いいね」
+          左右にスワイプ、またはボタンで物件を切り替えられます
         </p>
       </header>
 
       {/* Swipe area */}
-      <div className="flex-1 flex items-center justify-center px-4 pb-8">
-        {currentItem && (
-          <SwipeCard
-            key={currentItem.listingId}
-            imageUrl={currentItem.imageUrl}
-            title={currentItem.title}
-            index={currentIndex}
-            total={items.length}
-            onSwipe={handleSwipe}
-          />
-        )}
+      <div className="flex-1 flex items-center justify-center px-4 pb-4">
+        <SwipeCard
+          key={currentItem.listingId}
+          imageUrl={currentItem.imageUrl}
+          title={currentItem.title}
+          index={currentIndex}
+          total={items.length}
+          canGoPrev={canGoPrev}
+          canGoNext={canGoNext}
+          onNavigate={handleNavigate}
+        />
       </div>
+
+      {isLast && (
+        <div className="pb-8 text-center text-sm text-gray-500">
+          🎉 全{items.length}件ご覧いただきました（{viewedCount}件閲覧済み）
+        </div>
+      )}
     </div>
   )
 }
