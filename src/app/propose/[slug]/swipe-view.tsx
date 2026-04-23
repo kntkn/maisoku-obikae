@@ -242,20 +242,6 @@ export function SwipeView({
     })
   }
 
-  function handlePageTurn(fromPage: number, toPage: number) {
-    if (!currentListing) return
-    setPerProperty((prev) => {
-      const cur = prev[currentListing.id]
-      const next = { ...prev }
-      next[currentListing.id] = { ...cur, pageTurnCount: cur.pageTurnCount + 1 }
-      return next
-    })
-    send('property_page_turn', {
-      property_id: currentListing.id,
-      from_page: fromPage + 1,
-      to_page: toPage + 1,
-    })
-  }
 
   function handleZoom(info: ZoomInfo) {
     if (!currentListing) return
@@ -287,7 +273,17 @@ export function SwipeView({
 
   function handleZoomViewerEvent(name: string, params: Record<string, unknown>) {
     if (!currentListing) return
+    // Forward every viewer event to GA + swipe_events with property_id
     send(name, { property_id: currentListing.id, ...params })
+    // Keep per-property aggregate counters in sync so the dashboard shows them
+    if (name === 'zoom_mode_page_turn') {
+      setPerProperty((prev) => {
+        const cur = prev[currentListing.id]
+        const next = { ...prev }
+        next[currentListing.id] = { ...cur, pageTurnCount: cur.pageTurnCount + 1 }
+        return next
+      })
+    }
   }
   function handleZoomViewerClose() {
     setZoomOpen(false)
@@ -399,7 +395,6 @@ export function SwipeView({
           onReact={handleReact}
           onToggleTag={handleToggleTag}
           onNavigate={advance}
-          onPageTurn={handlePageTurn}
           onZoom={handleZoom}
         />
         <ZoomViewer

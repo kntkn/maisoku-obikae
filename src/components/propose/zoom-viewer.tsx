@@ -22,8 +22,8 @@ import { createPortal } from 'react-dom'
 import { formatCardTitle } from '@/lib/propose-tags'
 
 export interface ZoomEnterInfo {
-  source: 'dbltap' | 'pinch' | 'wheel'
-  startScale: number       // e.g. 2.0 for dbltap
+  source: 'tap' | 'pinch' | 'wheel'
+  startScale: number       // e.g. 2.0 for a tap
   startXPct: number        // 0..1 focal-point within the image
   startYPct: number        // 0..1
   pageIndex: number        // 0-based

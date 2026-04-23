@@ -20,7 +20,7 @@ export interface SwipeCardListing {
  * dedicated fullscreen ZoomViewer where pan/pinch/telemetry happen.
  */
 export interface ZoomInfo {
-  source: 'dbltap' | 'wheel' | 'pinch'
+  source: 'tap' | 'wheel' | 'pinch'
   xPct: number     // 0..1 — horizontal focal point within the image area
   yPct: number     // 0..1 — vertical focal point
   pageIndex: number
@@ -37,7 +37,6 @@ interface SwipeCardV2Props {
   onReact: (reaction: Reaction) => void
   onToggleTag: (label: string) => void
   onNavigate: (direction: 'prev' | 'next') => void
-  onPageTurn: (fromPage: number, toPage: number) => void
   onZoom: (info: ZoomInfo) => void
 }
 
@@ -58,10 +57,11 @@ function SwipeCardV2Inner({
   onReact,
   onToggleTag,
   onNavigate,
-  onPageTurn,
   onZoom,
 }: SwipeCardV2Props) {
-  const [pageIdx, setPageIdx] = useState(0)
+  // Page navigation for multi-page maisoku lives only inside the ZoomViewer
+  // now; the card just shows page 1 at a glance.
+  const pageIdx = 0
   const [moving, setMoving] = useState(false)
 
   const x = useMotionValue(0)
@@ -103,10 +103,6 @@ function SwipeCardV2Inner({
     }
   }
 
-  // ---------- page turn / double-tap zoom ----------
-  const lastTapRef = useRef(0)
-  const pendingTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
   /** Normalized (0..1) position of a pointer within `el`. */
   function positionWithin(el: HTMLElement, clientX: number, clientY: number) {
     const rect = el.getBoundingClientRect()
@@ -115,43 +111,18 @@ function SwipeCardV2Inner({
     return { xPct, yPct }
   }
 
-  /** Request fullscreen zoom mode. Parent owns the viewer/state/telemetry. */
-  function requestZoom(source: 'dbltap' | 'wheel' | 'pinch', xPct: number, yPct: number) {
+  /** Open the fullscreen zoom viewer. Parent owns state/telemetry. */
+  function requestZoom(source: 'tap' | 'wheel' | 'pinch', xPct: number, yPct: number) {
     onZoom({ source, xPct, yPct, pageIndex: pageIdx })
   }
 
+  // Any tap on the maisoku image enters the fullscreen zoom viewer.
+  // The hint badge above the image says "タップで拡大" so this matches what the
+  // customer expects; page navigation inside a multi-page maisoku is handled
+  // by the viewer's own footer, not by tapping the card.
   const onImageClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    // Event handler — Date.now() is fine here (not during render).
-    const now = Date.now()
-    const isDouble = now - lastTapRef.current < 320
-    const target = e.currentTarget
-
-    if (isDouble) {
-      if (pendingTapTimer.current) {
-        clearTimeout(pendingTapTimer.current)
-        pendingTapTimer.current = null
-      }
-      const { xPct, yPct } = positionWithin(target, e.clientX, e.clientY)
-      requestZoom('dbltap', xPct, yPct)
-      lastTapRef.current = 0
-      return
-    }
-    lastTapRef.current = now
-
-    const rect = target.getBoundingClientRect()
-    const clickX = e.clientX - rect.left
-    const clickWidth = rect.width
-
-    if (pendingTapTimer.current) clearTimeout(pendingTapTimer.current)
-    pendingTapTimer.current = setTimeout(() => {
-      pendingTapTimer.current = null
-      if (pageCount <= 1) return
-      const dir = clickX < clickWidth / 2 ? 'prev' : 'next'
-      const nextPage = pageIdx + (dir === 'next' ? 1 : -1)
-      if (nextPage < 0 || nextPage >= pageCount) return
-      onPageTurn(pageIdx, nextPage)
-      setPageIdx(nextPage)
-    }, 280)
+    const { xPct, yPct } = positionWithin(e.currentTarget, e.clientX, e.clientY)
+    requestZoom('tap', xPct, yPct)
   }
 
   const onWheel = (e: React.WheelEvent<HTMLDivElement>) => {
@@ -162,7 +133,7 @@ function SwipeCardV2Inner({
     requestZoom('wheel', xPct, yPct)
   }
 
-  // Pinch gesture on the card = enter zoom mode (actual zoom handled there)
+  // Pinch gesture on the card also enters zoom mode
   const pinchStartDist = useRef<number>(0)
   const onTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
     if (e.touches.length === 2) {
