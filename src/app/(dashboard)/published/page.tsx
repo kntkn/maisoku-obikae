@@ -7,11 +7,13 @@ import { Card, CardContent } from '@/components/ui/card'
 import { toast } from 'sonner'
 import type { PublishedListing } from '@/lib/database.types'
 import { getPublicBaseUrl } from '@/lib/public-url'
+import { TagEditorDialog } from '@/components/listings/tag-editor-dialog'
 
 export default function PublishedPage() {
   const [listings, setListings] = useState<PublishedListing[]>([])
   const [loading, setLoading] = useState(true)
   const [userSlug, setUserSlug] = useState<string | null>(null)
+  const [tagEditing, setTagEditing] = useState<PublishedListing | null>(null)
 
   const supabase = createClient()
 
@@ -146,7 +148,7 @@ export default function PublishedPage() {
             <Card key={listing.id}>
               <CardContent className="py-4">
                 <div className="flex items-center justify-between">
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <h3 className="font-medium">{listing.title}</h3>
                       <span className={`text-xs px-2 py-0.5 rounded-full ${
@@ -160,8 +162,29 @@ export default function PublishedPage() {
                     <p className="text-sm text-muted-foreground mt-1">
                       {listing.page_count}ページ &middot; {new Date(listing.created_at).toLocaleDateString('ja-JP')}
                     </p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {(listing.highlight_tags ?? []).length === 0 ? (
+                        <span className="text-xs text-gray-400">タグ未設定</span>
+                      ) : (
+                        (listing.highlight_tags ?? []).map((t) => (
+                          <span
+                            key={t}
+                            className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700"
+                          >
+                            {t}
+                          </span>
+                        ))
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setTagEditing(listing)}
+                    >
+                      タグ編集
+                    </Button>
                     <Button
                       variant="outline"
                       size="sm"
@@ -191,6 +214,21 @@ export default function PublishedPage() {
             </Card>
           ))}
         </div>
+      )}
+
+      {tagEditing && (
+        <TagEditorDialog
+          open={!!tagEditing}
+          onOpenChange={(open) => { if (!open) setTagEditing(null) }}
+          listingId={tagEditing.id}
+          listingTitle={tagEditing.title}
+          initialTags={tagEditing.highlight_tags ?? []}
+          onSaved={(tags) => {
+            setListings((prev) =>
+              prev.map((l) => (l.id === tagEditing.id ? { ...l, highlight_tags: tags } : l)),
+            )
+          }}
+        />
       )}
     </div>
   )

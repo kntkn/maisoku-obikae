@@ -109,6 +109,7 @@ export interface Database {
           page_count: number
           is_published: boolean
           ga_measurement_id: string | null
+          highlight_tags: string[]
           created_at: string
           updated_at: string
         }
@@ -120,6 +121,7 @@ export interface Database {
           page_count: number
           is_published?: boolean
           ga_measurement_id?: string | null
+          highlight_tags?: string[]
           created_at?: string
           updated_at?: string
         }
@@ -131,6 +133,7 @@ export interface Database {
           page_count?: number
           is_published?: boolean
           ga_measurement_id?: string | null
+          highlight_tags?: string[]
           created_at?: string
           updated_at?: string
         }
@@ -171,6 +174,9 @@ export interface Database {
           customer_name: string
           slug: string
           listing_ids: string[]
+          final_ranking: string[]
+          ranking_comment: string | null
+          completed_at: string | null
           created_at: string
         }
         Insert: {
@@ -179,6 +185,9 @@ export interface Database {
           customer_name: string
           slug: string
           listing_ids: string[]
+          final_ranking?: string[]
+          ranking_comment?: string | null
+          completed_at?: string | null
           created_at?: string
         }
         Update: {
@@ -187,6 +196,9 @@ export interface Database {
           customer_name?: string
           slug?: string
           listing_ids?: string[]
+          final_ranking?: string[]
+          ranking_comment?: string | null
+          completed_at?: string | null
           created_at?: string
         }
       }
@@ -197,7 +209,14 @@ export interface Database {
           listing_id: string
           liked: boolean
           viewed_seconds: number
+          reaction: 'like' | 'pass' | null
+          selected_tags: string[]
+          dwell_ms: number
+          zoom_count: number
+          page_turn_count: number
+          revisit_count: number
           created_at: string
+          updated_at: string
         }
         Insert: {
           id?: string
@@ -205,7 +224,14 @@ export interface Database {
           listing_id: string
           liked: boolean
           viewed_seconds?: number
+          reaction?: 'like' | 'pass' | null
+          selected_tags?: string[]
+          dwell_ms?: number
+          zoom_count?: number
+          page_turn_count?: number
+          revisit_count?: number
           created_at?: string
+          updated_at?: string
         }
         Update: {
           id?: string
@@ -213,7 +239,43 @@ export interface Database {
           listing_id?: string
           liked?: boolean
           viewed_seconds?: number
+          reaction?: 'like' | 'pass' | null
+          selected_tags?: string[]
+          dwell_ms?: number
+          zoom_count?: number
+          page_turn_count?: number
+          revisit_count?: number
           created_at?: string
+          updated_at?: string
+        }
+      }
+      swipe_events: {
+        Row: {
+          id: string
+          proposal_id: string | null
+          session_id: string
+          listing_id: string | null
+          event_name: string
+          params: Json
+          ts: string
+        }
+        Insert: {
+          id?: string
+          proposal_id?: string | null
+          session_id: string
+          listing_id?: string | null
+          event_name: string
+          params?: Json
+          ts?: string
+        }
+        Update: {
+          id?: string
+          proposal_id?: string | null
+          session_id?: string
+          listing_id?: string | null
+          event_name?: string
+          params?: Json
+          ts?: string
         }
       }
     }
@@ -273,3 +335,5 @@ export type ProposalSet = Database['public']['Tables']['proposal_sets']['Row']
 export type ProposalSetInsert = Database['public']['Tables']['proposal_sets']['Insert']
 export type SwipeResult = Database['public']['Tables']['swipe_results']['Row']
 export type SwipeResultInsert = Database['public']['Tables']['swipe_results']['Insert']
+export type SwipeEvent = Database['public']['Tables']['swipe_events']['Row']
+export type SwipeEventInsert = Database['public']['Tables']['swipe_events']['Insert']
