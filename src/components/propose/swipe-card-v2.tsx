@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react'
 import { motion, useMotionValue, useTransform, animate } from 'framer-motion'
 import Image from 'next/image'
-import { tagsForListing } from '@/lib/propose-tags'
+import { tagsForListing, formatCardTitle } from '@/lib/propose-tags'
 
 export type Reaction = 'like' | 'pass'
 
@@ -271,6 +271,13 @@ function SwipeCardV2Inner({
                 priority
               />
             ) : null}
+            {/* Persistent hint so the customer notices tap-to-zoom */}
+            <div className="pointer-events-none absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-medium text-white backdrop-blur-sm">
+              <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>
+                zoom_in
+              </span>
+              タップで拡大
+            </div>
             {pageCount > 1 && (
               <div className="pointer-events-none absolute right-3 top-3 rounded-full bg-black/55 px-2.5 py-0.5 text-[11px] text-white">
                 {pageIdx + 1} / {pageCount}
@@ -281,7 +288,9 @@ function SwipeCardV2Inner({
           {/* Body: title, tag hint, chips */}
           <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-auto border-t border-gray-200 px-4 py-4">
             <div>
-              <h2 className="m-0 text-[18px] font-bold text-gray-900">{listing.title}</h2>
+              <h2 className="m-0 text-[18px] font-bold text-gray-900">
+                {formatCardTitle(listing.title, pageIdx, pageCount)}
+              </h2>
             </div>
 
             <p className="m-0 inline-flex items-center gap-1 text-[11px] text-gray-400">

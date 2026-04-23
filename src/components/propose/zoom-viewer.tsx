@@ -19,6 +19,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { formatCardTitle } from '@/lib/propose-tags'
 
 export interface ZoomEnterInfo {
   source: 'dbltap' | 'pinch' | 'wheel'
@@ -433,8 +434,8 @@ export function ZoomViewer({
         >
           <span className="material-symbols-rounded" style={{ fontSize: '24px' }}>close</span>
         </button>
-        <div className="truncate text-center text-[13px] font-medium opacity-80">
-          {listingTitle}
+        <div className="min-w-0 flex-1 truncate px-2 text-center text-[13px] font-medium opacity-80">
+          {formatCardTitle(listingTitle, page, imageUrls.length)}
         </div>
         <div className="w-10 text-right text-[11px] text-white/60">
           {scale.toFixed(1)}x

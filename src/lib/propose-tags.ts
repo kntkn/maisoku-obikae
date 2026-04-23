@@ -9,20 +9,36 @@
 
 export const UNIVERSAL_POS_TAGS: readonly string[] = [
   '駅近',
-  'お得',
   '広い',
   '綺麗',
+  '築浅',
+  '南向き',
+  'お得',
+  '収納多い',
+  'キッチン広い',
+  '風呂トイレ別',
+  'セキュリティ◎',
+  '閑静',
+  '日当たり◎',
+  'デザイン性◎',
 ]
 
 export const TAG_ICONS: Record<string, string> = {
   // universal positive
   '駅近': 'train',
-  'お得': 'savings',
   '広い': 'open_in_full',
   '綺麗': 'auto_awesome',
-  // per-listing positive — common property traits
   '築浅': 'verified',
   '南向き': 'wb_sunny',
+  'お得': 'savings',
+  '収納多い': 'inventory_2',
+  'キッチン広い': 'kitchen',
+  '風呂トイレ別': 'bathtub',
+  'セキュリティ◎': 'security',
+  '閑静': 'volume_off',
+  '日当たり◎': 'light_mode',
+  'デザイン性◎': 'palette',
+  // per-listing positive — common property traits
   '広め': 'open_in_full',
   '高層階': 'keyboard_double_arrow_up',
   'リノベ': 'auto_fix_high',
@@ -31,9 +47,13 @@ export const TAG_ICONS: Record<string, string> = {
   '新築': 'verified',
   'コスパ': 'payments',
   'セキュリティ充実': 'security',
-  '閑静': 'nights_stay',
   'バルコニー広': 'deck',
   'ペット可': 'pets',
+  '駐車場あり': 'local_parking',
+  '宅配ボックス': 'inbox',
+  'インターネット無料': 'wifi',
+  'エアコン付': 'ac_unit',
+  '眺望◎': 'landscape',
 }
 
 /** Build the unique chip list for a listing (universal + highlight_tags, dedupe). */
@@ -47,6 +67,17 @@ export function tagsForListing(highlightTags: readonly string[] | null | undefin
     out.push({ label: l, icon: TAG_ICONS[l] ?? 'label' })
   }
   return out
+}
+
+/**
+ * Format the card title as `{物件名} ({現在ページ}/{全体ページ})`.
+ * Brokers often embed "(N/M)" in the stored title to track ordinals within
+ * a proposal — we strip that so the display only shows the maisoku page
+ * position, which is what the customer actually needs to know.
+ */
+export function formatCardTitle(rawTitle: string, pageIndex: number, totalPages: number): string {
+  const cleaned = rawTitle.replace(/\s*[（(]\s*\d+\s*\/\s*\d+\s*[）)]\s*$/, '').trim()
+  return `${cleaned} (${pageIndex + 1}/${Math.max(1, totalPages)})`
 }
 
 /**
