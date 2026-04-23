@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { motion, useMotionValue, useTransform, animate } from 'framer-motion'
 import Image from 'next/image'
 import { tagsForListing } from '@/lib/propose-tags'
@@ -14,10 +14,15 @@ export interface SwipeCardListing {
   highlightTags: string[]
 }
 
+/**
+ * Fired when the customer's gesture indicates they want to zoom in.
+ * Instead of applying CSS scale on the card itself, the parent opens a
+ * dedicated fullscreen ZoomViewer where pan/pinch/telemetry happen.
+ */
 export interface ZoomInfo {
   source: 'dbltap' | 'wheel' | 'pinch'
-  xPct: number     // 0..1 — horizontal position within the image area
-  yPct: number     // 0..1 — vertical position within the image area
+  xPct: number     // 0..1 — horizontal focal point within the image area
+  yPct: number     // 0..1 — vertical focal point
   pageIndex: number
 }
 
@@ -36,7 +41,13 @@ interface SwipeCardV2Props {
   onZoom: (info: ZoomInfo) => void
 }
 
-export function SwipeCardV2({
+// Remount when the listing changes so card-local state (pageIdx, x offset,
+// gesture buffers) resets cleanly without a setState-in-effect.
+export function SwipeCardV2(props: SwipeCardV2Props) {
+  return <SwipeCardV2Inner key={props.listing.id} {...props} />
+}
+
+function SwipeCardV2Inner({
   listing,
   currentIndex,
   total,
@@ -51,7 +62,6 @@ export function SwipeCardV2({
   onZoom,
 }: SwipeCardV2Props) {
   const [pageIdx, setPageIdx] = useState(0)
-  const [zoomed, setZoomed] = useState(false)
   const [moving, setMoving] = useState(false)
 
   const x = useMotionValue(0)
@@ -63,12 +73,7 @@ export function SwipeCardV2({
   const selected = new Set(selectedTags)
   const pageCount = listing.pages.length
 
-  // Reset card-local state on listing change
-  useEffect(() => {
-    setPageIdx(0)
-    setZoomed(false)
-    x.set(0)
-  }, [listing.id, x])
+  // (key-based remount in parent handles listing.id changes; no effect needed)
 
   const handleDragEnd = (
     _: unknown,
@@ -102,7 +107,7 @@ export function SwipeCardV2({
   const lastTapRef = useRef(0)
   const pendingTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  /** Compute the normalized (0..1) position of a pointer within `el`. */
+  /** Normalized (0..1) position of a pointer within `el`. */
   function positionWithin(el: HTMLElement, clientX: number, clientY: number) {
     const rect = el.getBoundingClientRect()
     const xPct = rect.width > 0 ? Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) : 0.5
@@ -110,17 +115,13 @@ export function SwipeCardV2({
     return { xPct, yPct }
   }
 
-  function zoomAt(source: 'dbltap' | 'wheel' | 'pinch', xPct: number, yPct: number) {
-    setZoomed(true)
+  /** Request fullscreen zoom mode. Parent owns the viewer/state/telemetry. */
+  function requestZoom(source: 'dbltap' | 'wheel' | 'pinch', xPct: number, yPct: number) {
     onZoom({ source, xPct, yPct, pageIndex: pageIdx })
-  }
-  function unzoom() {
-    setZoomed(false)
   }
 
   const onImageClick = (e: React.MouseEvent<HTMLDivElement>) => {
     // Event handler — Date.now() is fine here (not during render).
-    // eslint-disable-next-line react-hooks/purity
     const now = Date.now()
     const isDouble = now - lastTapRef.current < 320
     const target = e.currentTarget
@@ -130,12 +131,8 @@ export function SwipeCardV2({
         clearTimeout(pendingTapTimer.current)
         pendingTapTimer.current = null
       }
-      if (zoomed) {
-        unzoom()
-      } else {
-        const { xPct, yPct } = positionWithin(target, e.clientX, e.clientY)
-        zoomAt('dbltap', xPct, yPct)
-      }
+      const { xPct, yPct } = positionWithin(target, e.clientX, e.clientY)
+      requestZoom('dbltap', xPct, yPct)
       lastTapRef.current = 0
       return
     }
@@ -148,10 +145,6 @@ export function SwipeCardV2({
     if (pendingTapTimer.current) clearTimeout(pendingTapTimer.current)
     pendingTapTimer.current = setTimeout(() => {
       pendingTapTimer.current = null
-      if (zoomed) {
-        unzoom()
-        return
-      }
       if (pageCount <= 1) return
       const dir = clickX < clickWidth / 2 ? 'prev' : 'next'
       const nextPage = pageIdx + (dir === 'next' ? 1 : -1)
@@ -164,12 +157,12 @@ export function SwipeCardV2({
   const onWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     if (!e.ctrlKey) return
     e.preventDefault()
+    if (e.deltaY >= -10) return
     const { xPct, yPct } = positionWithin(e.currentTarget, e.clientX, e.clientY)
-    if (e.deltaY < -10 && !zoomed) zoomAt('wheel', xPct, yPct)
-    else if (e.deltaY > 10 && zoomed) unzoom()
+    requestZoom('wheel', xPct, yPct)
   }
 
-  // Pinch-to-zoom on touch devices: detect 2-finger spread
+  // Pinch gesture on the card = enter zoom mode (actual zoom handled there)
   const pinchStartDist = useRef<number>(0)
   const onTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
     if (e.touches.length === 2) {
@@ -181,11 +174,11 @@ export function SwipeCardV2({
     if (e.touches.length !== 2 || !pinchStartDist.current) return
     const [a, b] = [e.touches[0], e.touches[1]]
     const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)
-    if (d / pinchStartDist.current > 1.3 && !zoomed) {
+    if (d / pinchStartDist.current > 1.15) {
       const midX = (a.clientX + b.clientX) / 2
       const midY = (a.clientY + b.clientY) / 2
       const { xPct, yPct } = positionWithin(e.currentTarget, midX, midY)
-      zoomAt('pinch', xPct, yPct)
+      requestZoom('pinch', xPct, yPct)
       pinchStartDist.current = 0
     }
   }
@@ -257,11 +250,9 @@ export function SwipeCardV2({
             違うかな
           </motion.div>
 
-          {/* 16:9 image area */}
+          {/* 16:9 image area — double-tap / pinch / ctrl+wheel opens fullscreen zoom mode */}
           <div
-            className={`swipe-image-wrap relative flex w-full flex-shrink-0 items-center justify-center bg-[#f0f0f3] ${
-              zoomed ? 'zoomed' : ''
-            }`}
+            className="swipe-image-wrap relative flex w-full flex-shrink-0 items-center justify-center bg-[#f0f0f3]"
             style={{ aspectRatio: '16 / 9' }}
             onClick={onImageClick}
             onWheel={onWheel}

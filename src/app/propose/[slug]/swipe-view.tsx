@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { WelcomeHero } from '@/components/propose/welcome-hero'
 import { SwipeCardV2, type Reaction, type SwipeCardListing, type ZoomInfo } from '@/components/propose/swipe-card-v2'
+import { ZoomViewer, type ZoomEnterInfo } from '@/components/propose/zoom-viewer'
 import { PredictedRanking, type RankingListing } from '@/components/propose/predicted-ranking'
 import {
   sendSwipeEvent,
@@ -76,6 +77,10 @@ export function SwipeView({
   )
   const [finalRanking, setFinalRanking] = useState<string[]>(initialRanking)
   const [comment, setComment] = useState<string>(initialComment)
+
+  // Zoom mode — fullscreen viewer overlaid on the current card
+  const [zoomOpen, setZoomOpen] = useState(false)
+  const [zoomEnterInfo, setZoomEnterInfo] = useState<ZoomEnterInfo | null>(null)
 
   const sessionIdRef = useRef<string>(makeSessionId())
   const sessionIdStable = sessionIdRef.current
@@ -260,14 +265,33 @@ export function SwipeView({
       next[currentListing.id] = { ...cur, zoomCount: cur.zoomCount + 1 }
       return next
     })
+    // Legacy one-shot event (kept for timeline markers + backward compat)
     send('property_zoom', {
       property_id: currentListing.id,
       zoom_level: 2.0,
       source: info.source,
       zoom_x_pct: Number(info.xPct.toFixed(3)),
       zoom_y_pct: Number(info.yPct.toFixed(3)),
-      page_index: info.pageIndex + 1, // human-readable page number
+      page_index: info.pageIndex + 1,
     })
+    // Open the fullscreen viewer — rich telemetry starts there
+    setZoomEnterInfo({
+      source: info.source,
+      startScale: info.source === 'pinch' ? 1.8 : 2.0,
+      startXPct: info.xPct,
+      startYPct: info.yPct,
+      pageIndex: info.pageIndex,
+    })
+    setZoomOpen(true)
+  }
+
+  function handleZoomViewerEvent(name: string, params: Record<string, unknown>) {
+    if (!currentListing) return
+    send(name, { property_id: currentListing.id, ...params })
+  }
+  function handleZoomViewerClose() {
+    setZoomOpen(false)
+    setZoomEnterInfo(null)
   }
 
   function proceedToEnd() {
@@ -363,20 +387,30 @@ export function SwipeView({
     }
     const cur = perProperty[currentListing.id]
     return (
-      <SwipeCardV2
-        listing={cardListing}
-        currentIndex={currentIndex}
-        total={listings.length}
-        prevReaction={cur?.reaction ?? null}
-        selectedTags={cur?.selectedTags ?? []}
-        canGoPrev={currentIndex > 0}
-        canGoNext={currentIndex < listings.length - 1}
-        onReact={handleReact}
-        onToggleTag={handleToggleTag}
-        onNavigate={advance}
-        onPageTurn={handlePageTurn}
-        onZoom={handleZoom}
-      />
+      <>
+        <SwipeCardV2
+          listing={cardListing}
+          currentIndex={currentIndex}
+          total={listings.length}
+          prevReaction={cur?.reaction ?? null}
+          selectedTags={cur?.selectedTags ?? []}
+          canGoPrev={currentIndex > 0}
+          canGoNext={currentIndex < listings.length - 1}
+          onReact={handleReact}
+          onToggleTag={handleToggleTag}
+          onNavigate={advance}
+          onPageTurn={handlePageTurn}
+          onZoom={handleZoom}
+        />
+        <ZoomViewer
+          open={zoomOpen}
+          listingTitle={currentListing.title}
+          imageUrls={currentListing.pages.map((p) => p.image_url)}
+          enterInfo={zoomEnterInfo}
+          onClose={handleZoomViewerClose}
+          onEvent={handleZoomViewerEvent}
+        />
+      </>
     )
   }
 
