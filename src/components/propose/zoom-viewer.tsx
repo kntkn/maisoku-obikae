@@ -22,7 +22,7 @@ import { createPortal } from 'react-dom'
 import { formatCardTitle } from '@/lib/propose-tags'
 
 export interface ZoomEnterInfo {
-  source: 'tap' | 'pinch' | 'wheel'
+  source: 'tap' | 'pinch' | 'wheel' | 'key'
   startScale: number       // e.g. 2.0 for a tap
   startXPct: number        // 0..1 focal-point within the image
   startYPct: number        // 0..1
@@ -348,8 +348,11 @@ export function ZoomViewer({
   }
 
   // --- Mouse / wheel (desktop) --------------------------------------------
+  // Accept both Ctrl+Wheel (trackpad pinch native semantic) and Shift+Wheel
+  // (keyboard-friendly zoom on plain mice). Plain wheel is passed through for
+  // scroll, which is a no-op here since the container is overflow:hidden.
   const onWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-    if (!e.ctrlKey) return
+    if (!e.ctrlKey && !e.shiftKey) return
     e.preventDefault()
     const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12
     const p = toContainerPoint(e.clientX, e.clientY)
@@ -389,16 +392,22 @@ export function ZoomViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
-  // Esc to close
+  // Keyboard shortcuts — Esc closes, arrows navigate pages
   useEffect(() => {
     if (!open) return
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') requestClose()
+      if (e.key === 'Escape') {
+        requestClose()
+      } else if (e.key === 'ArrowLeft') {
+        goPage('prev')
+      } else if (e.key === 'ArrowRight') {
+        goPage('next')
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
+  }, [open, page])
 
   // --- Page navigation (internal only) ------------------------------------
   function goPage(dir: 'prev' | 'next') {
@@ -446,6 +455,9 @@ export function ZoomViewer({
       <div
         ref={containerRef}
         className="relative flex-1 touch-none select-none overflow-hidden"
+        style={{
+          cursor: scale > 1.05 ? (mouseDownRef.current ? 'grabbing' : 'grab') : 'zoom-in',
+        }}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
@@ -465,10 +477,11 @@ export function ZoomViewer({
           }}
         />
 
-        {/* Hints overlay (only at 1x, fades out) */}
+        {/* Hints overlay (only at 1x, fades out). Shows touch AND desktop cues. */}
         {scale <= 1.05 && (
-          <div className="pointer-events-none absolute bottom-16 left-1/2 -translate-x-1/2 rounded-full bg-white/10 px-4 py-1.5 text-[11px] text-white/70">
-            ピンチで拡大 · 2本指でパン · ダブルタップで2.5倍
+          <div className="pointer-events-none absolute bottom-16 left-1/2 -translate-x-1/2 rounded-full bg-white/10 px-4 py-1.5 text-center text-[11px] text-white/70">
+            <span className="hidden md:inline">Ctrl/Shift+ホイールで拡大 · ドラッグでパン · ダブルクリックで2.5倍 · Esc で閉じる</span>
+            <span className="md:hidden">ピンチで拡大 · 2本指でパン · ダブルタップで2.5倍</span>
           </div>
         )}
       </div>

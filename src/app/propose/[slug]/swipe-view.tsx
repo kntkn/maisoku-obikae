@@ -10,6 +10,7 @@ import {
   makeSessionId,
   hashId,
   submitConfirmation,
+  detectDeviceInfo,
   type PerListingResult,
 } from '@/lib/propose-analytics'
 import { predictedScore } from '@/lib/propose-tags'
@@ -169,9 +170,53 @@ export function SwipeView({
     return () => document.removeEventListener('visibilitychange', onVis)
   }, [])
 
+  // Desktop keyboard shortcuts — only active during the swipe screen and
+  // while the zoom viewer is closed (viewer owns its own key handling)
+  useEffect(() => {
+    if (screen !== 'swipe' || zoomOpen) return
+    function onKey(e: KeyboardEvent) {
+      if (e.target instanceof HTMLElement) {
+        const tag = e.target.tagName.toLowerCase()
+        if (tag === 'input' || tag === 'textarea') return
+      }
+      const fire = (action: string) => send('keyboard_action', { key: e.key, action })
+      if (e.key === 'ArrowLeft') {
+        if (currentIndex > 0) { fire('prev_card'); advance('prev') }
+      } else if (e.key === 'ArrowRight') {
+        if (currentIndex < listings.length - 1) { fire('next_card'); advance('next') }
+      } else if (e.key === 'ArrowUp' || e.key === 'k' || e.key === 'K') {
+        fire('like')
+        handleReact('like')
+      } else if (e.key === 'ArrowDown' || e.key === 'j' || e.key === 'J') {
+        fire('pass')
+        handleReact('pass')
+      } else if (e.key === 'z' || e.key === 'Z' || e.key === ' ') {
+        e.preventDefault()
+        fire('zoom_open')
+        openZoomFromKeyboard()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen, zoomOpen, currentIndex])
+
+  function openZoomFromKeyboard() {
+    if (!currentListing) return
+    handleZoom({
+      source: 'key',
+      xPct: 0.5,
+      yPct: 0.5,
+      pageIndex: 0,
+    })
+  }
+
   // -------- transitions ---------
   function start() {
-    send('session_start', { listings_count: listings.length })
+    send('session_start', {
+      listings_count: listings.length,
+      ...detectDeviceInfo(),
+    })
     setScreen('swipe')
   }
 

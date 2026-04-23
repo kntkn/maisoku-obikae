@@ -75,7 +75,7 @@ export function PredictedRanking({
   }
 
   return (
-    <div className="propose-body mx-auto flex min-h-dvh w-full max-w-[480px] flex-col bg-[#f7f7f8] px-5 pb-10 pt-7">
+    <div className="propose-body mx-auto flex min-h-dvh w-full max-w-[480px] flex-col bg-[#f7f7f8] px-5 pb-10 pt-7 md:max-w-[640px] md:px-8 md:pt-10">
       {/* Thank-you */}
       <div className="text-center">
         <span className="material-symbols-rounded text-[#2b5de4]" style={{ fontSize: '40px' }}>

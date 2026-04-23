@@ -75,6 +75,33 @@ export function hashId(s: string): string {
   return 'c_' + (h >>> 0).toString(36)
 }
 
+export interface DeviceInfo {
+  device_type: 'mobile' | 'tablet' | 'desktop'
+  pointer_type: 'fine' | 'coarse' | 'none'
+  viewport_width: number
+  viewport_height: number
+}
+
+/**
+ * Best-effort device classification. Uses pointer media queries + viewport
+ * width. Called client-side when session_start fires.
+ */
+export function detectDeviceInfo(): DeviceInfo {
+  if (typeof window === 'undefined') {
+    return { device_type: 'desktop', pointer_type: 'none', viewport_width: 0, viewport_height: 0 }
+  }
+  const w = window.innerWidth
+  const h = window.innerHeight
+  const fine = window.matchMedia?.('(pointer: fine)').matches
+  const coarse = window.matchMedia?.('(pointer: coarse)').matches
+  const pointer_type = fine ? 'fine' : coarse ? 'coarse' : 'none'
+  let device_type: DeviceInfo['device_type']
+  if (w < 640) device_type = 'mobile'
+  else if (w < 1024) device_type = pointer_type === 'coarse' ? 'tablet' : 'desktop'
+  else device_type = 'desktop'
+  return { device_type, pointer_type, viewport_width: w, viewport_height: h }
+}
+
 // ---------------------------------------------------------------------------
 // Final confirmation submit
 // ---------------------------------------------------------------------------

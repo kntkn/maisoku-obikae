@@ -20,7 +20,7 @@ export interface SwipeCardListing {
  * dedicated fullscreen ZoomViewer where pan/pinch/telemetry happen.
  */
 export interface ZoomInfo {
-  source: 'tap' | 'wheel' | 'pinch'
+  source: 'tap' | 'wheel' | 'pinch' | 'key'
   xPct: number     // 0..1 — horizontal focal point within the image area
   yPct: number     // 0..1 — vertical focal point
   pageIndex: number
@@ -175,9 +175,9 @@ function SwipeCardV2Inner({
   const passReacted = prevReaction === 'pass'
 
   return (
-    <div className="propose-body flex h-dvh max-w-[480px] mx-auto w-full flex-col bg-[#f7f7f8] pb-10">
+    <div className="propose-body mx-auto flex min-h-dvh w-full max-w-[480px] flex-col bg-[#f7f7f8] pb-10 md:h-auto md:max-w-[960px] md:py-6">
       {/* Progress */}
-      <header className="px-5 pb-2 pt-4">
+      <header className="px-5 pb-2 pt-4 md:px-8">
         <div className="flex items-center gap-2.5 text-[12px] text-gray-400">
           <span>
             {currentIndex + 1} / {total}
@@ -192,14 +192,14 @@ function SwipeCardV2Inner({
       </header>
 
       {/* Card area */}
-      <div className="relative flex min-h-0 flex-1 items-stretch justify-center overflow-hidden px-4 pb-1 pt-2">
+      <div className="relative flex min-h-0 flex-1 items-stretch justify-center overflow-hidden px-4 pb-1 pt-2 md:flex-none md:px-8 md:pb-4 md:pt-4">
         <motion.div
           style={{ x, rotate }}
           drag="x"
           dragConstraints={{ left: 0, right: 0 }}
           dragElastic={0.8}
           onDragEnd={handleDragEnd}
-          className="relative flex h-full w-full touch-none select-none flex-col overflow-hidden rounded-2xl bg-white shadow-[0_10px_30px_rgba(20,20,30,0.10)]"
+          className="relative flex h-full w-full touch-none select-none flex-col overflow-hidden rounded-2xl bg-white shadow-[0_10px_30px_rgba(20,20,30,0.10)] md:h-[min(620px,calc(100dvh-240px))] md:flex-row"
         >
           {/* swipe direction hints */}
           <motion.div
@@ -221,9 +221,9 @@ function SwipeCardV2Inner({
             違うかな
           </motion.div>
 
-          {/* 16:9 image area — double-tap / pinch / ctrl+wheel opens fullscreen zoom mode */}
+          {/* Image area — 16:9 on mobile (stacked), ~60% width on desktop (side-by-side) */}
           <div
-            className="swipe-image-wrap relative flex w-full flex-shrink-0 items-center justify-center bg-[#f0f0f3]"
+            className="swipe-image-wrap relative flex w-full flex-shrink-0 cursor-zoom-in items-center justify-center bg-[#f0f0f3] md:aspect-auto md:h-full md:w-[60%]"
             style={{ aspectRatio: '16 / 9' }}
             onClick={onImageClick}
             onWheel={onWheel}
@@ -256,10 +256,10 @@ function SwipeCardV2Inner({
             )}
           </div>
 
-          {/* Body: title, tag hint, chips */}
-          <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-auto border-t border-gray-200 px-4 py-4">
+          {/* Body: title, tag hint, chips — stacked below on mobile, right column on desktop */}
+          <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-auto border-t border-gray-200 px-4 py-4 md:w-[40%] md:flex-shrink-0 md:border-l md:border-t-0 md:px-6 md:py-5">
             <div>
-              <h2 className="m-0 text-[18px] font-bold text-gray-900">
+              <h2 className="m-0 text-[18px] font-bold text-gray-900 md:text-[20px]">
                 {formatCardTitle(listing.title, pageIdx, pageCount)}
               </h2>
             </div>
@@ -305,7 +305,7 @@ function SwipeCardV2Inner({
       </div>
 
       {/* 2-way reaction buttons */}
-      <nav className="flex items-center justify-center gap-2.5 px-4 pb-2 pt-2.5">
+      <nav className="flex items-center justify-center gap-2.5 px-4 pb-2 pt-2.5 md:mx-auto md:w-full md:max-w-[640px] md:px-8 md:pt-4">
         <button
           type="button"
           onClick={() => triggerReact('pass')}
@@ -346,8 +346,16 @@ function SwipeCardV2Inner({
         </button>
       </nav>
 
+      {/* Desktop-only keyboard hint */}
+      <p className="hidden pt-3 text-center text-[11px] text-gray-400 md:block">
+        キーボード: <kbd className="rounded border border-gray-300 bg-gray-50 px-1.5 text-[10px]">←</kbd> <kbd className="rounded border border-gray-300 bg-gray-50 px-1.5 text-[10px]">→</kbd> 物件切替 ·
+        <kbd className="ml-2 rounded border border-gray-300 bg-gray-50 px-1.5 text-[10px]">K</kbd>/<kbd className="rounded border border-gray-300 bg-gray-50 px-1.5 text-[10px]">↑</kbd> 気になる ·
+        <kbd className="ml-2 rounded border border-gray-300 bg-gray-50 px-1.5 text-[10px]">J</kbd>/<kbd className="rounded border border-gray-300 bg-gray-50 px-1.5 text-[10px]">↓</kbd> 違うかな ·
+        <kbd className="ml-2 rounded border border-gray-300 bg-gray-50 px-1.5 text-[10px]">Z</kbd> 拡大
+      </p>
+
       {/* Prev / next navigation (chevron only, visual cue) */}
-      <nav className="pointer-events-none flex items-center justify-between px-5 pb-4 pt-1">
+      <nav className="pointer-events-none flex items-center justify-between px-5 pb-4 pt-1 md:mx-auto md:w-full md:max-w-[640px] md:px-8">
         <button
           type="button"
           onClick={() => onNavigate('prev')}
