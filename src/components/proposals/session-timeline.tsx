@@ -13,14 +13,23 @@ interface SessionTimelineProps {
   events: SwipeEvent[]              // ascending by ts
   listings: Map<string, TimelineListing>
   listingOrder?: string[]           // display order (default: first-seen order)
+  onLaneClick?: (listingId: string) => void
 }
 
 interface ViewSegment {
   startMs: number
   endMs: number
   markers: Marker[]
+  zoomBars: ZoomBar[]
   pageAtStart: number
   pagesVisited: number[]            // in order, starting from pageAtStart
+}
+
+interface ZoomBar {
+  startMs: number
+  endMs: number
+  maxScale: number
+  durationMs: number
 }
 
 interface Marker {
@@ -39,7 +48,7 @@ interface Lane {
   firstSeenMs: number
 }
 
-export function SessionTimeline({ events, listings, listingOrder }: SessionTimelineProps) {
+export function SessionTimeline({ events, listings, listingOrder, onLaneClick }: SessionTimelineProps) {
   const parsed = events.map((e) => ({ ...e, tsMs: new Date(e.ts).getTime() }))
   if (parsed.length === 0) {
     return (
@@ -66,6 +75,8 @@ export function SessionTimeline({ events, listings, listingOrder }: SessionTimel
 
   let currentListingId: string | null = null
   let currentSegment: ViewSegment | null = null
+  let openZoomStart: number | null = null
+  let openZoomMaxScale = 1
 
   for (const ev of parsed) {
     const params = (ev.params ?? {}) as Record<string, unknown>
@@ -82,10 +93,41 @@ export function SessionTimeline({ events, listings, listingOrder }: SessionTimel
           startMs: ev.tsMs,
           endMs: ev.tsMs,
           markers: [],
+          zoomBars: [],
           pageAtStart: 1,
           pagesVisited: [1],
         }
         lane.segments.push(currentSegment)
+        break
+      }
+      case 'zoom_mode_enter': {
+        if (currentSegment) {
+          openZoomStart = ev.tsMs
+          openZoomMaxScale = typeof params.start_scale === 'number' ? (params.start_scale as number) : 1
+        }
+        break
+      }
+      case 'zoom_mode_sample': {
+        if (openZoomStart != null) {
+          const batch = (params.batch ?? []) as Array<Record<string, unknown>>
+          for (const s of batch) {
+            const sc = typeof s.scale === 'number' ? (s.scale as number) : 1
+            if (sc > openZoomMaxScale) openZoomMaxScale = sc
+          }
+        }
+        break
+      }
+      case 'zoom_mode_exit': {
+        if (openZoomStart != null && currentSegment) {
+          currentSegment.zoomBars.push({
+            startMs: openZoomStart,
+            endMs: ev.tsMs,
+            durationMs: typeof params.duration_ms === 'number' ? (params.duration_ms as number) : ev.tsMs - openZoomStart,
+            maxScale: typeof params.max_scale === 'number' ? (params.max_scale as number) : openZoomMaxScale,
+          })
+          openZoomStart = null
+          openZoomMaxScale = 1
+        }
         break
       }
       case 'property_view_end': {
@@ -182,6 +224,7 @@ export function SessionTimeline({ events, listings, listingOrder }: SessionTimel
             listing={listing}
             sessionMin={sessionMin}
             totalMs={totalMs}
+            onClick={onLaneClick ? () => onLaneClick(lane.listingId) : undefined}
           />
         ))}
       </div>
@@ -214,11 +257,13 @@ function TimelineRow({
   listing,
   sessionMin,
   totalMs,
+  onClick,
 }: {
   lane: Lane
   listing: TimelineListing
   sessionMin: number
   totalMs: number
+  onClick?: () => void
 }) {
   const reactionBadge =
     lane.endReaction === 'like' ? (
@@ -232,7 +277,13 @@ function TimelineRow({
     ) : null
 
   return (
-    <div className="flex items-center gap-3 px-4 py-3">
+    <div
+      className={`flex items-center gap-3 px-4 py-3 ${onClick ? 'cursor-pointer hover:bg-gray-50' : ''}`}
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') onClick() } : undefined}
+    >
       {/* Left label: thumb + title + badge */}
       <div className="flex w-[148px] flex-shrink-0 items-center gap-2">
         {listing.thumbnailUrl ? (
@@ -264,6 +315,19 @@ function TimelineRow({
                 }}
                 title={`${formatDuration(seg.startMs - sessionMin)} — ${formatDuration(seg.endMs - sessionMin)} (${formatDuration(seg.endMs - seg.startMs)})`}
               />
+              {/* zoom-mode duration overlay (amber) */}
+              {seg.zoomBars.map((z, zi) => {
+                const zLeftPct = ((z.startMs - sessionMin) / totalMs) * 100
+                const zWidthPct = Math.max(0.3, ((z.endMs - z.startMs) / totalMs) * 100)
+                return (
+                  <div
+                    key={`z-${i}-${zi}`}
+                    className="absolute top-1 h-6 rounded bg-amber-300/80 ring-1 ring-amber-500"
+                    style={{ left: `${zLeftPct}%`, width: `${zWidthPct}%` }}
+                    title={`ズーム ${formatDuration(z.durationMs)} · 最大 ${z.maxScale.toFixed(1)}x`}
+                  />
+                )
+              })}
               {/* markers inside segment */}
               {seg.markers.map((m, mi) => {
                 const mLeftPct = ((m.t - sessionMin) / totalMs) * 100

@@ -14,8 +14,18 @@ import type {
   SwipeEvent,
 } from '@/lib/database.types'
 import { SessionTimeline, type TimelineListing } from './session-timeline'
+import { ListingDetailModal } from './listing-detail-modal'
 
-export type ListingWithThumb = PublishedListing & { thumbnailUrl: string | null }
+export interface ListingPage {
+  image_url: string
+  width: number | null
+  height: number | null
+}
+
+export type ListingWithThumb = PublishedListing & {
+  thumbnailUrl: string | null
+  pages: ListingPage[]
+}
 
 export interface ProposalDashboardData {
   proposal: ProposalSet
@@ -32,7 +42,9 @@ interface ProposalDashboardProps {
 
 export function ProposalDashboard({ data, variant = 'owner' }: ProposalDashboardProps) {
   const [showEvents, setShowEvents] = useState(false)
+  const [detailListingId, setDetailListingId] = useState<string | null>(null)
   const nextHint = useMemo(() => buildNextHint(data), [data])
+  const deviceSummary = useMemo(() => buildDeviceSummary(data.events), [data.events])
 
   const { proposal, listings, results, events } = data
   const ranked = proposal.final_ranking
@@ -82,6 +94,19 @@ export function ProposalDashboard({ data, variant = 'owner' }: ProposalDashboard
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {deviceSummary.length > 0 && (
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-[11px] text-gray-600">
+              {deviceSummary.map((d, i) => (
+                <span key={i} title={d.tooltip} className="inline-flex items-center gap-1">
+                  <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>
+                    {d.icon}
+                  </span>
+                  {d.label}
+                  {d.count > 1 ? ` ×${d.count}` : ''}
+                </span>
+              ))}
+            </div>
+          )}
           <span
             className={`rounded-full px-3 py-1 text-xs font-medium ${
               completed
@@ -125,7 +150,11 @@ export function ProposalDashboard({ data, variant = 'owner' }: ProposalDashboard
           events={eventsAsc}
           listings={timelineListings}
           listingOrder={proposal.listing_ids}
+          onLaneClick={(id) => setDetailListingId(id)}
         />
+        <p className="mt-2 text-[11px] text-gray-400">
+          行をクリックすると、その物件のマイソクとズーム軌跡が詳細で見られます。
+        </p>
       </div>
 
       {/* Stats */}
@@ -204,6 +233,19 @@ export function ProposalDashboard({ data, variant = 'owner' }: ProposalDashboard
             </ul>
           </CardContent>
         </Card>
+      )}
+
+      {/* Per-listing detail modal — heatmap + full maisoku */}
+      {detailListingId && (
+        <ListingDetailModal
+          open={!!detailListingId}
+          listing={listings.get(detailListingId) ?? null}
+          events={eventsAsc.filter((e) => {
+            const p = (e.params ?? {}) as Record<string, unknown>
+            return (e.listing_id ?? p.property_id) === detailListingId
+          })}
+          onClose={() => setDetailListingId(null)}
+        />
       )}
 
       {/* Raw events */}
@@ -344,6 +386,39 @@ function renderParams(params: Record<string, unknown>): string {
     if (params[k] !== undefined && params[k] !== null) parts.push(`${k}=${String(params[k])}`)
   }
   return parts.join(' ')
+}
+
+interface DeviceBadge {
+  label: string
+  icon: string
+  count: number
+  tooltip: string
+}
+function buildDeviceSummary(events: SwipeEvent[]): DeviceBadge[] {
+  const starts = events.filter((e) => e.event_name === 'session_start')
+  const grouped = new Map<string, { count: number; widths: number[] }>()
+  for (const ev of starts) {
+    const p = (ev.params ?? {}) as Record<string, unknown>
+    const dt = (p.device_type as string) || 'unknown'
+    const w = typeof p.viewport_width === 'number' ? (p.viewport_width as number) : null
+    const g = grouped.get(dt) ?? { count: 0, widths: [] }
+    g.count += 1
+    if (w) g.widths.push(w)
+    grouped.set(dt, g)
+  }
+  const labels: Record<string, { label: string; icon: string }> = {
+    mobile: { label: 'スマホ', icon: 'smartphone' },
+    tablet: { label: 'タブレット', icon: 'tablet_mac' },
+    desktop: { label: 'PC', icon: 'computer' },
+    unknown: { label: '不明', icon: 'devices_other' },
+  }
+  return Array.from(grouped.entries()).map(([dt, g]) => {
+    const meta = labels[dt] ?? labels.unknown
+    const tooltip = g.widths.length
+      ? `${meta.label}: ${g.widths.join('px, ')}px`
+      : meta.label
+    return { label: meta.label, icon: meta.icon, count: g.count, tooltip }
+  })
 }
 
 function buildNextHint(d: ProposalDashboardData): string[] {

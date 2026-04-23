@@ -69,18 +69,26 @@ export default async function ProposalSharePage({ params }: Props) {
 
   const { data: pages } = await supabase
     .from('published_pages')
-    .select('listing_id, page_number, image_url')
+    .select('listing_id, page_number, image_url, width, height')
     .in('listing_id', proposal.listing_ids)
-    .eq('page_number', 1)
+    .order('listing_id', { ascending: true })
+    .order('page_number', { ascending: true })
 
-  const thumbByListing = new Map<string, string>()
-  ;(pages ?? []).forEach((pg: Pick<PublishedPage, 'listing_id' | 'image_url'>) => {
-    thumbByListing.set(pg.listing_id, pg.image_url)
+  const pagesByListing = new Map<string, { image_url: string; width: number | null; height: number | null }[]>()
+  ;(pages ?? []).forEach((pg: Pick<PublishedPage, 'listing_id' | 'image_url' | 'width' | 'height'>) => {
+    const arr = pagesByListing.get(pg.listing_id) ?? []
+    arr.push({ image_url: pg.image_url, width: pg.width, height: pg.height })
+    pagesByListing.set(pg.listing_id, arr)
   })
 
   const listings = new Map<string, ListingWithThumb>()
   ;(listingRows ?? []).forEach((l: PublishedListing) => {
-    listings.set(l.id, { ...l, thumbnailUrl: thumbByListing.get(l.id) ?? null })
+    const lp = pagesByListing.get(l.id) ?? []
+    listings.set(l.id, {
+      ...l,
+      thumbnailUrl: lp[0]?.image_url ?? null,
+      pages: lp,
+    })
   })
 
   const { data: results } = await supabase
