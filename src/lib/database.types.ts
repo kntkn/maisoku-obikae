@@ -177,6 +177,7 @@ export interface Database {
           final_ranking: string[]
           ranking_comment: string | null
           completed_at: string | null
+          share_token: string | null
           created_at: string
         }
         Insert: {
@@ -188,6 +189,7 @@ export interface Database {
           final_ranking?: string[]
           ranking_comment?: string | null
           completed_at?: string | null
+          share_token?: string | null
           created_at?: string
         }
         Update: {
@@ -199,6 +201,7 @@ export interface Database {
           final_ranking?: string[]
           ranking_comment?: string | null
           completed_at?: string | null
+          share_token?: string | null
           created_at?: string
         }
       }

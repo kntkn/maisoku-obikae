@@ -32,7 +32,7 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   // 認証が必要なページへの未認証アクセスをリダイレクト
-  const publicPaths = ['/login', '/signup', '/auth/callback', '/api/', '/p/', '/propose/']
+  const publicPaths = ['/login', '/signup', '/auth/callback', '/api/', '/p/', '/propose/', '/review/']
   const isPublicPath = publicPaths.some(path => request.nextUrl.pathname.startsWith(path))
 
   if (!user && !isPublicPath && request.nextUrl.pathname !== '/') {

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { WelcomeHero } from '@/components/propose/welcome-hero'
-import { SwipeCardV2, type Reaction, type SwipeCardListing } from '@/components/propose/swipe-card-v2'
+import { SwipeCardV2, type Reaction, type SwipeCardListing, type ZoomInfo } from '@/components/propose/swipe-card-v2'
 import { PredictedRanking, type RankingListing } from '@/components/propose/predicted-ranking'
 import {
   sendSwipeEvent,
@@ -252,7 +252,7 @@ export function SwipeView({
     })
   }
 
-  function handleZoom() {
+  function handleZoom(info: ZoomInfo) {
     if (!currentListing) return
     setPerProperty((prev) => {
       const cur = prev[currentListing.id]
@@ -263,7 +263,10 @@ export function SwipeView({
     send('property_zoom', {
       property_id: currentListing.id,
       zoom_level: 2.0,
-      source: 'dbltap',
+      source: info.source,
+      zoom_x_pct: Number(info.xPct.toFixed(3)),
+      zoom_y_pct: Number(info.yPct.toFixed(3)),
+      page_index: info.pageIndex + 1, // human-readable page number
     })
   }
 

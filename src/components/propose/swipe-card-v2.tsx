@@ -14,6 +14,13 @@ export interface SwipeCardListing {
   highlightTags: string[]
 }
 
+export interface ZoomInfo {
+  source: 'dbltap' | 'wheel' | 'pinch'
+  xPct: number     // 0..1 — horizontal position within the image area
+  yPct: number     // 0..1 — vertical position within the image area
+  pageIndex: number
+}
+
 interface SwipeCardV2Props {
   listing: SwipeCardListing
   currentIndex: number
@@ -26,7 +33,7 @@ interface SwipeCardV2Props {
   onToggleTag: (label: string) => void
   onNavigate: (direction: 'prev' | 'next') => void
   onPageTurn: (fromPage: number, toPage: number) => void
-  onZoom: () => void
+  onZoom: (info: ZoomInfo) => void
 }
 
 export function SwipeCardV2({
@@ -95,23 +102,46 @@ export function SwipeCardV2({
   const lastTapRef = useRef(0)
   const pendingTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  /** Compute the normalized (0..1) position of a pointer within `el`. */
+  function positionWithin(el: HTMLElement, clientX: number, clientY: number) {
+    const rect = el.getBoundingClientRect()
+    const xPct = rect.width > 0 ? Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) : 0.5
+    const yPct = rect.height > 0 ? Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)) : 0.5
+    return { xPct, yPct }
+  }
+
+  function zoomAt(source: 'dbltap' | 'wheel' | 'pinch', xPct: number, yPct: number) {
+    setZoomed(true)
+    onZoom({ source, xPct, yPct, pageIndex: pageIdx })
+  }
+  function unzoom() {
+    setZoomed(false)
+  }
+
   const onImageClick = (e: React.MouseEvent<HTMLDivElement>) => {
     // Event handler — Date.now() is fine here (not during render).
     // eslint-disable-next-line react-hooks/purity
     const now = Date.now()
     const isDouble = now - lastTapRef.current < 320
+    const target = e.currentTarget
+
     if (isDouble) {
       if (pendingTapTimer.current) {
         clearTimeout(pendingTapTimer.current)
         pendingTapTimer.current = null
       }
-      toggleZoom()
+      if (zoomed) {
+        unzoom()
+      } else {
+        const { xPct, yPct } = positionWithin(target, e.clientX, e.clientY)
+        zoomAt('dbltap', xPct, yPct)
+      }
       lastTapRef.current = 0
       return
     }
     lastTapRef.current = now
 
-    const rect = e.currentTarget.getBoundingClientRect()
+    const rect = target.getBoundingClientRect()
     const clickX = e.clientX - rect.left
     const clickWidth = rect.width
 
@@ -119,7 +149,7 @@ export function SwipeCardV2({
     pendingTapTimer.current = setTimeout(() => {
       pendingTapTimer.current = null
       if (zoomed) {
-        toggleZoom()
+        unzoom()
         return
       }
       if (pageCount <= 1) return
@@ -131,19 +161,36 @@ export function SwipeCardV2({
     }, 280)
   }
 
-  function toggleZoom() {
-    setZoomed((z) => {
-      const next = !z
-      if (next) onZoom()
-      return next
-    })
-  }
-
   const onWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     if (!e.ctrlKey) return
     e.preventDefault()
-    if (e.deltaY < -10 && !zoomed) toggleZoom()
-    else if (e.deltaY > 10 && zoomed) toggleZoom()
+    const { xPct, yPct } = positionWithin(e.currentTarget, e.clientX, e.clientY)
+    if (e.deltaY < -10 && !zoomed) zoomAt('wheel', xPct, yPct)
+    else if (e.deltaY > 10 && zoomed) unzoom()
+  }
+
+  // Pinch-to-zoom on touch devices: detect 2-finger spread
+  const pinchStartDist = useRef<number>(0)
+  const onTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length === 2) {
+      const [a, b] = [e.touches[0], e.touches[1]]
+      pinchStartDist.current = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)
+    }
+  }
+  const onTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length !== 2 || !pinchStartDist.current) return
+    const [a, b] = [e.touches[0], e.touches[1]]
+    const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)
+    if (d / pinchStartDist.current > 1.3 && !zoomed) {
+      const midX = (a.clientX + b.clientX) / 2
+      const midY = (a.clientY + b.clientY) / 2
+      const { xPct, yPct } = positionWithin(e.currentTarget, midX, midY)
+      zoomAt('pinch', xPct, yPct)
+      pinchStartDist.current = 0
+    }
+  }
+  const onTouchEnd = () => {
+    pinchStartDist.current = 0
   }
 
   // ---------- buttons ----------
@@ -218,6 +265,9 @@ export function SwipeCardV2({
             style={{ aspectRatio: '16 / 9' }}
             onClick={onImageClick}
             onWheel={onWheel}
+            onTouchStart={onTouchStart}
+            onTouchMove={onTouchMove}
+            onTouchEnd={onTouchEnd}
           >
             {currentImage ? (
               <Image
